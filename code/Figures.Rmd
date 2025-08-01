@@ -1,0 +1,211 @@
+---
+title: "Data cleaning and figures"
+output: html_document
+date: "2025-05-15"
+---
+
+Project set up
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Set working directory
+setwd("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/")
+
+# Load required libraries and install packages if necessary
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(ggalluvial)
+```
+
+Set up dataframe
+```{r}
+#Read in csv
+Data <- read.csv("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Data from NTU (Singapore)/Carbon_Market_Data_20250408.csv")
+
+# Define keywords that indicate forest-based carbon projects
+forest_keywords <- c("REDD", "Forest", "forest", "Reforestation", "reforestation", "Afforestation", "afforestation", "Deforestation", "deforestation", "Ecosystem Conversion", "ecosystem conversion", "Peat Swamp", "peat swamp")
+
+# Identify forest-based projects
+forest_projects_df <- Data[grepl(paste(forest_keywords, collapse = "|"), 
+                               Data$Project.Methodologies, ignore.case = TRUE), ]
+
+# Print the result
+print(forest_projects_df)
+
+# Ensure Sum.of.Credit.Volume is numeric (cleaning empty or non-numeric entries)
+Data_reduced <- forest_projects_df %>%
+  select(
+    Headquarter.Country,
+    Buyer.Continent,
+    Credit.Volume = `Sum.of.Credit.Volume`,
+    Project.Country,
+    Project.Continent
+  )
+
+# Filter for complete cases (no NA or empty strings)
+Data_complete <- Data_reduced %>%
+  filter(
+    complete.cases(.) &                     # Remove NA values
+    Credit.Volume != "" &                   # Remove empty strings
+    Headquarter.Country != "" &
+    Buyer.Continent != "" &
+    Project.Country != "" &
+    Project.Continent != ""
+  )
+
+Data_diff <- Data_complete %>%
+  filter(Headquarter.Country != Project.Country)
+
+flow_matrix <- Data_diff %>%
+  mutate(Credit.Volume = as.numeric(Credit.Volume)) %>%  # Convert to numeric
+  group_by(Buyer.Continent, Project.Continent) %>%
+  summarise(total_volume = sum(Credit.Volume, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(
+    names_from = Project.Continent,
+    values_from = total_volume,
+    values_fill = 0
+  ) %>%
+  column_to_rownames("Buyer.Continent")
+
+# View the result
+print(flow_matrix)
+
+#Put it into alluvial format
+# Convert the matrix to a data frame
+flow_df <- as.data.frame(flow_matrix)
+
+# Add the source column from row names
+flow_df <- flow_df %>%
+  mutate(source = rownames(flow_matrix)) %>%
+  relocate(source)
+
+# View the result
+print(flow_df)
+
+df_long <- flow_df %>%
+  pivot_longer(cols = -source, names_to = "target", values_to = "value") %>%
+  filter(value > 0) %>%  # Optional: remove zero flows
+  mutate(
+    source = factor(source, levels = unique(source)),
+    target = factor(target, levels = unique(target))
+  )
+
+#Create alluvial plots for flows between regions
+#Plot with labels
+p <- ggplot(df_long,
+       aes(axis1 = source, axis2 = target, y = value)) +
+  geom_alluvium(aes(fill = source), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "grey", color = "black") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2) +
+  scale_x_discrete(limits = c("Origin", "Retirement"), expand = c(.05, .05))  +
+  scale_fill_manual(values = c(
+    "Africa" = "#4f2fee",
+    "Asia" = "#42999b",
+    "Europe" = "#70ffc4",
+    "North America" = "#fac723",
+    "South America" = "#ff5c9a",
+    "Oceania" = "#b25b68"
+  )) +
+  theme_minimal() +
+  ggtitle("Forest-based carbon flows between regions")
+
+#Plot without labels
+p2 <- ggplot(df_long,
+       aes(axis1 = source, axis2 = target, y = value)) +
+  geom_alluvium(aes(fill = source), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "grey", color = "black") +
+  #geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2) +
+  scale_x_discrete(limits = c("Origin", "Retirement"), expand = c(.05, .05))  +
+  scale_fill_manual(values = c(
+    "Africa" = "#4f2fee",
+    "Asia" = "#42999b",
+    "Europe" = "#70ffc4",
+    "North America" = "#fac723",
+    "South America" = "#ff5c9a",
+    "Oceania" = "#b25b68"
+  )) +
+  theme_minimal() +
+  ggtitle("Forest-based carbon flows between regions")
+
+# Export to both plots
+ggsave("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/figures/alluvial_plot_text.png", plot = p, width = 10, height = 6, dpi = 300)
+ggsave("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/figures/alluvial_plot.png", plot = p2, width = 10, height = 6, dpi = 300)
+
+#Create the plot for flows between countries
+# Make sure Credit.Volume is numeric
+Data_complete <- Data_diff %>%
+  mutate(Credit.Volume = as.numeric(gsub(",", "", Credit.Volume)))
+
+# Summarise and reshape to long format for alluvial plot
+df_long_country <- Data_complete %>%
+  group_by(Headquarter.Country, Project.Country) %>%
+  summarise(value = sum(Credit.Volume, na.rm = TRUE), .groups = "drop") %>%
+  rename(source = Headquarter.Country, target = Project.Country)
+
+# Create the alluvial plot with labels
+p3 <- ggplot(df_long_country,
+            aes(axis1 = source, axis2 = target, y = value)) +
+  geom_alluvium(aes(fill = source), width = 1/12, alpha = 0.8) +
+  geom_stratum(width = 1/12, fill = "grey90", color = "black") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2, hjust = 0) +
+  scale_x_discrete(limits = c("Origin", "Retirement"), expand = c(.05, .05)) +
+  theme_minimal() +
+  ggtitle("Forest-based carbon flows between countries")
+
+# Print the plot
+print(p3)
+ggsave("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/figures/countries_text.png", plot = p3, width = 10, height = 6, dpi = 300)
+
+# Create the alluvial plot without labels
+p4 <- ggplot(df_long_country,
+            aes(axis1 = source, axis2 = target, y = value)) +
+  geom_alluvium(aes(fill = source), width = 1/12, alpha = 0.8) +
+  geom_stratum(width = 1/12, fill = "grey90", color = "black") +
+  #geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2, hjust = 0) +
+  scale_x_discrete(limits = c("Origin", "Retirement"), expand = c(.05, .05)) +
+  theme_minimal() +
+  ggtitle("Forest-based carbon flows between countries")
+
+
+# Print the plot
+print(p4)
+ggsave("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/figures/countries.png", plot = p4, width = 10, height = 6, dpi = 300)
+
+```
+
+Summaries for reporting purposes
+```{r}
+# Make sure Credit.Volume is numeric
+Data_complete <- Data_complete %>%
+  mutate(Credit.Volume = as.numeric(Credit.Volume))
+
+# Group and summarise
+top_countries <- Data_complete %>%
+  group_by(Headquarter.Country) %>%
+  summarise(Total_Credit = sum(Credit.Volume, na.rm = TRUE)) %>%
+  arrange(desc(Total_Credit))
+
+# View result
+print(top_countries)
+
+# Summarise by Project.Country
+top_projects <- Data_complete %>%
+  group_by(Project.Country) %>%
+  summarise(Total_Credit = sum(Credit.Volume, na.rm = TRUE)) %>%
+  arrange(desc(Total_Credit)) %>%
+  slice_head(n = 10)  # Top 10
+
+# View result
+print(top_projects)
+
+## hello ##
+
+print(top_projects)
+```
+
+```{r}
+verra_projects <- subset(Data, Registry == "Verra")
+unique(verra_projects$Project.Methodologies)
+
+```
