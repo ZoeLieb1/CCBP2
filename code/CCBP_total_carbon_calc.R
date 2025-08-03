@@ -3,28 +3,31 @@
 #### first bringing CAR units into "sum of credit volume column originally in NTU #####
 
 # Load the data
-data <- read.csv("Combined_Carbon_Market_Data.csv", stringsAsFactors = FALSE)
+load("Combined_Carbon_Market_Data.RDATA")
+
+ls()
+class(combined_data)  # or whatever object name you found
 
 # Check structure (optional but useful for debugging)
 # str(ntu_df)
 
 ### CAR registry ###
 # Update 'sum_of_credit_volume' with 'car_total_number_offset_credits_registered'
-data$sum_of_credit_volume[!is.na(data$car_total_number_offset_credits_registered)] <- 
-  data$car_total_number_offset_credits_registered[!is.na(data$car_total_number_offset_credits_registered)]
+combined_data$sum_of_credit_volume[!is.na(combined_data$car_total_number_offset_credits_registered)] <- 
+  combined_data$car_total_number_offset_credits_registered[!is.na(combined_data$car_total_number_offset_credits_registered)]
 
 
 #### BCR and Tero together ####
 
 # Update for BCR and Tero registries using 'total_issued_units'
-data$sum_of_credit_volume[!is.na(data$total_issued_units)] <- 
-  data$total_issued_units[!is.na(data$total_issued_units)]
+combined_data$sum_of_credit_volume[!is.na(combined_data$total_issued_units)] <- 
+  combined_data$total_issued_units[!is.na(combined_data$total_issued_units)]
 
 
 #### Australia ETS and JCM registries using 't_co2_eq_total' ####
 
-data$sum_of_credit_volume[!is.na(data$t_co2_eq_total)] <- 
-  data$t_co2_eq_total[!is.na(data$t_co2_eq_total)]
+combined_data$sum_of_credit_volume[!is.na(combined_data$t_co2_eq_total)] <- 
+  combined_data$t_co2_eq_total[!is.na(combined_data$t_co2_eq_total)]
 
 
 #### slightly trickier calcs now, pulling in registries that only report annually and we need to count how many years they have been functioning ####
@@ -39,8 +42,8 @@ data$sum_of_credit_volume[!is.na(data$t_co2_eq_total)] <-
 
 library(stringr)
 
-data$sum_of_credit_volume[data$registry == "ICR" & !is.na(data$projects_estimated_annual_mitigations)] <- 
-  sapply(data$projects_estimated_annual_mitigations[data$registry == "ICR" & !is.na(data$projects_estimated_annual_mitigations)], function(x) {
+combined_data$sum_of_credit_volume[data$registry == "ICR" & !is.na(combined_data$projects_estimated_annual_mitigations)] <- 
+  sapply(combined_data$projects_estimated_annual_mitigations[combined_data$registry == "ICR" & !is.na(combined_data$projects_estimated_annual_mitigations)], function(x) {
     
     # Extract all c(...) groups using regex
     c_blocks <- str_extract_all(x, "c\\(([^\\)]*)\\)")[[1]]
@@ -71,8 +74,8 @@ data$sum_of_credit_volume[data$registry == "ICR" & !is.na(data$projects_estimate
 ####ICR try 2 - didn't work #####
 library(stringr)
 
-data$sum_of_credit_volume[data$registry == "ICR" & !is.na(data$projects_estimated_annual_mitigations)] <- 
-  sapply(data$projects_estimated_annual_mitigations[data$registry == "ICR" & !is.na(data$projects_estimated_annual_mitigations)], function(x) {
+combined_data$sum_of_credit_volume[combined_data$registry == "ICR" & !is.na(combined_data$projects_estimated_annual_mitigations)] <- 
+  sapply(combined_data$projects_estimated_annual_mitigations[combined_data$registry == "ICR" & !is.na(combined_data$projects_estimated_annual_mitigations)], function(x) {
     # Extract all c(...) blocks
     c_blocks <- str_extract_all(x, "c\\((.*?)\\)")[[1]]
     
@@ -99,10 +102,10 @@ data$sum_of_credit_volume[data$registry == "ICR" & !is.na(data$projects_estimate
 #### ICR try 3 ####
 library(stringr)
 # Load data
-data <- read.csv("Combined_Carbon_Market_Data.csv", stringsAsFactors = FALSE)
+combined_data
 
 # Clean 'projects_estimated_annual_mitigations' by removing the first c(...) if more than 2 exist
-data$projects_estimated_annual_mitigations <- sapply(data$projects_estimated_annual_mitigations, function(x) {
+combined_data$projects_estimated_annual_mitigations <- sapply(combined_data$projects_estimated_annual_mitigations, function(x) {
   if (is.na(x)) return(NA)
   
   # Find all c(...) blocks
@@ -116,7 +119,7 @@ data$projects_estimated_annual_mitigations <- sapply(data$projects_estimated_ann
   }
 })
 
-unique(data$projects_estimated_annual_mitigations)
+unique(combined_data$projects_estimated_annual_mitigations)
 
 
 #### ICR try 4 - spliting into new columns ####
@@ -125,15 +128,15 @@ library(stringr)
 library(dplyr)
 
 # Load the data
-data <- read.csv("Combined_Carbon_Market_Data.csv", stringsAsFactors = FALSE)
+combined_data
 
 # Split into parts wherever 'c(' appears
-split_parts <- str_split_fixed(data$projects_estimated_annual_mitigations, "c\\(", 4)
+split_parts <- str_split_fixed(combined_data$projects_estimated_annual_mitigations, "c\\(", 4)
 
 # Assign to new columns, re-add the 'c(' to make them valid R expressions if needed
-data$icr_timestamp <- ifelse(split_parts[,2] != "", paste0("c(", str_remove(split_parts[,2], "\\)$")), NA)
-data$icr_year     <- ifelse(split_parts[,3] != "", paste0("c(", str_remove(split_parts[,3], "\\)$")), NA)
-data$icr_value    <- ifelse(split_parts[,4] != "", paste0("c(", str_remove(split_parts[,4], "\\)$")), NA)
+combined_data$icr_timestamp <- ifelse(split_parts[,2] != "", paste0("c(", str_remove(split_parts[,2], "\\)$")), NA)
+combined_data$icr_year     <- ifelse(split_parts[,3] != "", paste0("c(", str_remove(split_parts[,3], "\\)$")), NA)
+combined_data$icr_value    <- ifelse(split_parts[,4] != "", paste0("c(", str_remove(split_parts[,4], "\\)$")), NA)
 
 
 #### splitting cells kind of worked. Issue that it dropped the closing parenthese?
@@ -143,13 +146,13 @@ data$icr_value    <- ifelse(split_parts[,4] != "", paste0("c(", str_remove(split
 library(stringr)
 
 # Create an empty vector for results
-icr_rows <- which(data$registry == "ICR")
-icr_results <- rep(NA, nrow(data))
+icr_rows <- which(combined_data$registry == "ICR")
+icr_results <- rep(NA, nrow(combined_data))
 
 # Loop only over ICR rows
 for (i in icr_rows) {
-  year_str <- data$icr_year[i]
-  value_str <- data$icr_value[i]
+  year_str <- combined_data$icr_year[i]
+  value_str <- combined_data$icr_value[i]
   
   if (is.na(year_str) || is.na(value_str)) next
   
@@ -169,7 +172,7 @@ for (i in icr_rows) {
 }
 
 # Now assign results into sum_of_credit_volume
-data$sum_of_credit_volume <- ifelse(data$registry == "ICR", icr_results, data$sum_of_credit_volume)
+combined_data$sum_of_credit_volume <- ifelse(combined_data$registry == "ICR", icr_results, combined_data$sum_of_credit_volume)
 
 
 
@@ -177,10 +180,56 @@ data$sum_of_credit_volume <- ifelse(data$registry == "ICR", icr_results, data$su
 ## to calculate total estimated carbon for this registry, we needed to annually enter the crediting start and end dates. This information was available in individual project websites, but did not come with the datasheet export option. ##
 
 
+### calculate number of years from start date to end date, or 2025, whichever is sooner
+
+library(dplyr)
+library(lubridate)
+
+class(combined_data$crediting_period_start_date)
+
+combined_data <- combined_data %>%
+  mutate(
+    parsed_start_date = dmy(crediting_period_start_date),
+    parsed_end_date   = dmy(crediting_period_end_date)
+  ) %>%
+  mutate(
+    start_year = case_when(
+      registry == "Clean Development Mechanism" & source == "ZEL_search" ~ year(parsed_start_date),
+      TRUE ~ NA_integer_
+    ),
+    end_year = case_when(
+      registry == "Clean Development Mechanism" & source == "ZEL_search" ~ year(parsed_end_date),
+      TRUE ~ NA_integer_
+    ),
+    capped_end_year = case_when(
+      !is.na(end_year) ~ pmin(end_year, 2025),
+      TRUE ~ NA_integer_
+    ),
+    credited_years = case_when(
+      !is.na(start_year) & !is.na(capped_end_year) ~ pmax(capped_end_year - start_year + 1, 0),
+      TRUE ~ NA_integer_
+    )
+  )
+
+### Checking output ####
+
+new_CDM <- combined_data %>%
+  filter(registry == "Clean Development Mechanism", source == "ZEL_search") %>%
+  select(
+    crediting_period_start_date,
+    crediting_period_end_date,
+    parsed_start_date,
+    parsed_end_date,
+    start_year,
+    end_year,
+    capped_end_year,
+    credited_years
+  ) %>%
+  head(70)  # adjust to show more rows if needed
 
 
-# Save it as a .RData file
-save(data, file = "Combined_Carbon_Market_Data_Updated.RData")
+
+
 
 
 
@@ -188,10 +237,4 @@ save(data, file = "Combined_Carbon_Market_Data_Updated.RData")
 # write.csv(data, "Combined_Carbon_Market_Data_Updated.csv", row.names = FALSE)
 
 
-git rm -r --cached
-git push origin --force --all
-git reset --soft HEAD~11
-git filter-branch --force --index-filter "git rm --cached --ignore-unmatch path/to/largefile" --prune-empty --tag-name-filter cat -- --all
-system("git rm -r --cached .")
 
-system("git push origin main --force")
