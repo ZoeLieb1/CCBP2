@@ -228,9 +228,39 @@ new_CDM <- combined_data %>%
   head(70)  # adjust to show more rows if needed
 
 
+combined_data %>%
+  filter(registry == "Clean Development Mechanism", source == "ZEL_search") %>%
+  filter(is.na(dmy(crediting_period_start_date)) | is.na(dmy(crediting_period_end_date))) %>%
+  select(crediting_period_start_date, crediting_period_end_date) %>%
+  distinct()
+
+
+#### multiply CDM annual credit volume by calculated years ####
+
+combined_data <- combined_data %>%
+  mutate(
+    parsed_start_date = case_when(
+      registry == "Clean Development Mechanism" & source == "ZEL_search" ~ dmy(crediting_period_start_date),
+      TRUE ~ as.Date(NA)
+    ),
+    parsed_end_date = case_when(
+      registry == "Clean Development Mechanism" & source == "ZEL_search" ~ dmy(crediting_period_end_date),
+      TRUE ~ as.Date(NA)
+    )
+  ) %>%
+  mutate(
+    start_year = year(parsed_start_date),
+    end_year = year(parsed_end_date),
+    capped_end_year = pmin(end_year, 2025, na.rm = TRUE),
+    credited_years = pmax(capped_end_year - start_year + 1, 0)
+  )
 
 
 
+
+### save as rdata file
+
+save(combined_data, file = "Combined_Carbon_Market_Data_Updated.RDATA")
 
 
 # write csv
