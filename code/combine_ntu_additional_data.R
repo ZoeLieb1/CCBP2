@@ -50,10 +50,10 @@ duplicated_ids <- combined_data %>% filter(duplicated(id))
 head(duplicated_ids)
 
 # Step 7: Export the combined dataset
-# write_csv(combined_data, "Combined_Carbon_Market_Data.csv")
+save(combined_data, file = "Combined_Carbon_Market_Data.RDATA")
 
 # Save it as a .RData file
-save(methodologies_by_registry, file = "Combined_Carbon_Market_Data.RData")
+save(methodologies_by_registry, file = "combineddata_methodology_by_reg.RData")
 
 
 ##### Summarising methodologies per registry ######
