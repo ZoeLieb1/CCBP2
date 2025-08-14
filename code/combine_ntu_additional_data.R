@@ -38,6 +38,10 @@ ntu_renamed <- ntu_data %>%
 ntu_renamed <- ntu_renamed %>% mutate(source = "NTU")
 additional_data <- additional_data %>% mutate(source = "ZEL_search")
 
+# Make sure both datasets have the same type for `est_price_at_retirement_date`
+ntu_renamed$est_price_at_retirement_date <- as.numeric(ntu_renamed$est_price_at_retirement_date)
+additional_data$est_price_at_retirement_date <- as.numeric(additional_data$est_price_at_retirement_date)
+
 
 # Step 5: Bind the two datasets together row-wise
 # This will keep all unique columns across both datasets

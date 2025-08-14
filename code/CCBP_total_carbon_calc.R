@@ -358,28 +358,23 @@ combined_data <- rbind(cdm_zel_data, combined_data)
 
 
 
-
 ##### Social Carbon #####
-##  completely not working........ ##
+##  works now... no idea what changed! ##
 
 
 ### calculate number of years from start date to end date, or 2025, whichever is sooner
 
-class(combined_data$crediting_period_start_date)
-
-
 socialcarb_zel_data <- combined_data[combined_data$registry == "Social Carbon" & combined_data$source == "ZEL_search",]
 
-socialcarb_zel_data$estimated_annual_emission_reductions <- as.numeric(socialcarb_zel_data$estimated_annual_emission_reductions)
 
-## this as.numeric conversion isn't working...
-socialcarb_zel_data$crediting_period_start_date <- as.numeric(socialcarb_zel_data$crediting_period_start_date)
-socialcarb_zel_data$crediting_period_end_date <- as.numeric(socialcarb_zel_data$crediting_period_end_date)
+class(socialcarb_zel_data$crediting_period_start_date)
+class(socialcarb_zel_data$crediting_period_end_date)
+class(socialcarb_zel_data$estimated_annual_emission_reductions)
 
 socialcarb_zel_data <- socialcarb_zel_data %>%
   mutate(
-    parsed_start_date = mdy(crediting_period_start_date),
-    parsed_end_date   = mdy(crediting_period_end_date)
+    parsed_start_date = dmy(crediting_period_start_date),
+    parsed_end_date   = dmy(crediting_period_end_date)
   ) %>%
   mutate(
     start_year = case_when(
@@ -401,7 +396,7 @@ socialcarb_zel_data <- socialcarb_zel_data %>%
   )
 
 
-### Checking output of CDM year calcs ####
+### Checking output of year calcs ####
 
 check_socialcarb <- socialcarb_zel_data %>%
   filter(registry == "Social Carbon", source == "ZEL_search") %>%
@@ -432,21 +427,125 @@ socialcarb_zel_data <- socialcarb_zel_data %>%
 ### test it worked ####
 
 socialcarb_check <- socialcarb_zel_data %>%
-  filter(registry == "Clean Development Mechanism", source == "ZEL_search") %>%
+  filter(registry == "Social Carbon", source == "ZEL_search") %>%
   select(estimated_annual_emission_reductions, credited_years, sum_of_credit_volume) %>%
   head(70)
 
 
 #### bringing into combined_data ####
 
-## removing outdates CDM ZEL_search rows, so that we don't duplicate
+## removing outdates Social Carbon ZEL_search rows, so that we don't duplicate
 
-combined_data <- combined_data[!(combined_data$registry == "Clean Development Mechanism" & 
+combined_data <- combined_data[!(combined_data$registry == "Social Carbon" & 
                                    combined_data$source == "ZEL_search"), ]
+
+### checking before Rbind
+
+ncol(socialcarb_zel_data)
+ncol(combined_data)
+
+setdiff(names(socialcarb_zel_data), names(combined_data))
+setdiff(names(combined_data), names(socialcarb_zel_data))
+
+### didn't work, lets try removing helper columns:
+cdm_zel_data <- cdm_zel_data %>%
+  select(names(combined_data))  # Keep only columns that exist in original combined_data
+
 
 ### combine back into combined_data - add back in the updated rows for CDM with new calculation
 combined_data <- rbind(cdm_zel_data, combined_data)
 
+
+
+
+
+######### Verra calc ########################################
+
+### calculate number of years from start date to end date, or 2025, whichever is sooner
+
+
+verra_zel_data <- combined_data[combined_data$registry == "Verra" & combined_data$source == "ZEL_search",]
+
+class(verra_zel_data$crediting_period_start_date)
+class(verra_zel_data$crediting_period_end_date)
+class(verra_zel_data$estimated_annual_emission_reductions)
+
+# doing this as.numeric turns the whole column into NAs
+## verra_zel_data$crediting_period_start_date <- as.numeric(verra_zel_data$crediting_period_start_date)
+
+verra_zel_data <- verra_zel_data %>%
+  mutate(
+    parsed_start_date = mdy(crediting_period_start_date),
+    parsed_end_date   = mdy(crediting_period_end_date)
+  ) %>%
+  mutate(
+    start_year = case_when(
+      registry == "Verra" & source == "ZEL_search" ~ year(parsed_start_date),
+      TRUE ~ NA_integer_
+    ),
+    end_year = case_when(
+      registry == "Verra" & source == "ZEL_search" ~ year(parsed_end_date),
+      TRUE ~ NA_integer_
+    ),
+    capped_end_year = case_when(
+      !is.na(end_year) ~ pmin(end_year, 2025),
+      TRUE ~ NA_integer_
+    ),
+    credited_years = case_when(
+      !is.na(start_year) & !is.na(capped_end_year) ~ pmax(capped_end_year - start_year + 1, 0),
+      TRUE ~ NA_integer_
+    )
+  )
+
+
+### Checking output of year calcs ####
+
+check_verra <- verra_zel_data %>%
+  filter(registry == "Verra", source == "ZEL_search") %>%
+  select(
+    crediting_period_start_date,
+    crediting_period_end_date,
+    parsed_start_date,
+    parsed_end_date,
+    start_year,
+    end_year,
+    capped_end_year,
+    credited_years
+  ) %>%
+  head(14)
+
+
+#### multiply CDM annual credit volume by calculated years ####
+
+verra_zel_data <- verra_zel_data %>%
+  mutate(
+    sum_of_credit_volume = case_when(
+      registry == "Verra" & source == "ZEL_search" ~
+        estimated_annual_emission_reductions * credited_years,
+      TRUE ~ NA_real_
+    )
+  )
+
+### test it worked ####
+
+verra_check <- verra_zel_data %>%
+  filter(registry == "Verra", source == "ZEL_search") %>%
+  select(estimated_annual_emission_reductions, credited_years, sum_of_credit_volume) %>%
+  head(30)
+
+
+#### bringing into combined_data ####
+
+## removing outdates CDM ZEL_search rows, so that we don't duplicate
+
+combined_data <- combined_data[!(combined_data$registry == "Verra" & 
+                                   combined_data$source == "ZEL_search"), ]
+
+### combine back into combined_data - add back in the updated rows for CDM with new calculation
+combined_data <- rbind(verra_zel_data, combined_data)
+
+
+###########################################
 
 
 ### save as rdata file
