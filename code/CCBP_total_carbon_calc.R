@@ -220,7 +220,7 @@ combined_data$sum_of_credit_volume <- ifelse(
 )
 
 
-combined_data %>%
+subset_icr <- combined_data %>%
   filter(registry == "ICR", source == "ZEL_search") %>%
   select(icr_year_raw, icr_value_raw, sum_of_credit_volume) %>%
   head(43)
@@ -250,6 +250,27 @@ combined_data %>%
     without_volume = sum(is.na(sum_of_credit_volume))
   )
 
+###Brooke's attempt
+library(tidyr)
+library(purrr)
+
+subset_icr <- combined_data %>%
+  filter(registry == "ICR", source == "ZEL_search") %>%
+  select(id, icr_year_raw, icr_value_raw, sum_of_credit_volume) %>%
+
+# Example transformation
+expanded_data <- subset_icr %>%
+  mutate(
+    years = map(icr_year_raw, ~ eval(parse(text = .x))),
+    values = map(icr_value_raw, ~ eval(parse(text = .x)))
+  ) %>%
+  mutate(id = row_number()) %>%  # unique ID per row
+  unnest(c(years, values)) %>%
+  pivot_wider(names_from = years, values_from = values)
+
+View(expanded_data)
+
+#Zoe now you shoudl be able to bring "expanded data" back into the main dataframe using the id
 
 ##### Clean Development Mechanism ##### --- All of this is no longer working!!
 
