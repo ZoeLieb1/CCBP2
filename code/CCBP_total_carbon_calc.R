@@ -172,6 +172,16 @@ combined_data$sum_of_credit_volume <- ifelse(combined_data$registry == "ICR", ic
 
 #### Try 5 - ICR ####
 
+## checking how may rows should have data in ICR
+
+subset_icr_raw <- combined_data %>%
+  filter(registry == "ICR", source == "ZEL_search") %>%
+  select(registry, source, projects_estimated_annual_mitigations)
+
+# View the result
+View(subset_icr_raw)
+
+### there should be 40 total calculations, even though not all will produce a number because some projects have no value generated yet
 
 # Extract all c(...) groups into a list of strings
 all_c_groups <- str_extract_all(combined_data$projects_estimated_annual_mitigations, "c\\([^)]*\\)")
@@ -256,7 +266,7 @@ library(purrr)
 
 subset_icr <- combined_data %>%
   filter(registry == "ICR", source == "ZEL_search") %>%
-  select(id, icr_year_raw, icr_value_raw, sum_of_credit_volume) %>%
+  select(id, icr_year_raw, icr_value_raw, sum_of_credit_volume)
 
 # Example transformation
 expanded_data <- subset_icr %>%
@@ -270,7 +280,105 @@ expanded_data <- subset_icr %>%
 
 View(expanded_data)
 
-#Zoe now you shoudl be able to bring "expanded data" back into the main dataframe using the id
+#Zoe now you should be able to bring "expanded data" back into the main dataframe using the id
+
+# add ICR data back into combined_data
+
+# add rows up to 2025, plant that into total cabron volumne column
+
+
+
+
+
+
+##### @ BROOKE - I think I have resolved the c()'s actually splitting out properly. Now when I go onto your step to the expanded_data, it only shows years starting in 2024, but there should be many other years (early as 2013 has years with corresponding values)
+
+
+#### @ BROOKE AGAIN - a ha! Ok I see now that the year values come out of order, so 2013 etc. are in there, just not in numerical order. So I think things are going normally now.
+
+### ZEL attempting code clean up ####
+
+#################################
+
+library(stringr)
+library(dplyr)
+library(purrr)
+library(tidyr)
+
+# Step 1: Extract c(...) groups
+all_c_groups <- str_extract_all(combined_data$projects_estimated_annual_mitigations, "c\\([^)]*\\)")
+
+# Step 2: Create new columns to store raw year/value strings
+combined_data$icr_year_raw <- NA_character_
+combined_data$icr_value_raw <- NA_character_
+
+# Step 3: Fill in those columns correctly for ICR/ZEL_search rows
+icr_rows <- which(combined_data$registry == "ICR" & combined_data$source == "ZEL_search")
+
+for (i in icr_rows) {
+  c_blocks <- all_c_groups[[i]]
+  if (length(c_blocks) < 2) next
+  
+  if (length(c_blocks) >= 3 && str_detect(c_blocks[1], "GMT|\\d{4}")) {
+    combined_data$icr_year_raw[i] <- c_blocks[2]
+    combined_data$icr_value_raw[i] <- c_blocks[3]
+  } else if (length(c_blocks) == 2) {
+    combined_data$icr_year_raw[i] <- c_blocks[1]
+    combined_data$icr_value_raw[i] <- c_blocks[2]
+  }
+}
+
+# Step 4: Build subset and expand c(...) vectors
+subset_icr <- combined_data %>%
+  filter(registry == "ICR", source == "ZEL_search") %>%
+  select(id, icr_year_raw, icr_value_raw)
+
+expanded_data <- subset_icr %>%
+  mutate(
+    year_vec = map(icr_year_raw, ~ tryCatch(eval(parse(text = .x)), error = function(e) NA)),
+    value_vec = map(icr_value_raw, ~ tryCatch(eval(parse(text = .x)), error = function(e) NA))
+  ) %>%
+  filter(!map_lgl(year_vec, is.null), !map_lgl(value_vec, is.null)) %>%
+  unnest(c(year_vec, value_vec)) %>%
+  rename(year = year_vec, value = value_vec)
+
+# Step 5: Pivot wider by year
+expanded_data <- expanded_data %>%
+  pivot_wider(
+    id_cols = id,  # Use actual id from original dataset!
+    names_from = year,
+    values_from = value
+  )
+
+# Step 6: Identify year columns <= 2025
+year_cols_to_sum <- names(expanded_data)[
+  grepl("^\\d{4}$", names(expanded_data)) & as.numeric(names(expanded_data)) <= 2025
+]
+
+# Step 7: Sum the values for each project
+expanded_data <- expanded_data %>%
+  rowwise() %>%
+  mutate(sum_of_credit_volume = sum(c_across(all_of(year_cols_to_sum)), na.rm = TRUE)) %>%
+  ungroup()
+
+# Step 8: Join back to `combined_data` using the `id` column
+combined_data <- combined_data %>%
+  left_join(
+    expanded_data %>% select(id, sum_of_credit_volume),
+    by = "id",
+    suffix = c("", "_from_expanded")
+  ) %>%
+  mutate(
+    sum_of_credit_volume = coalesce(sum_of_credit_volume_from_expanded, sum_of_credit_volume)
+  ) %>%
+  select(-sum_of_credit_volume_from_expanded)
+
+### ICR done ####
+
+
+
+
+
 
 ##### Clean Development Mechanism ##### --- All of this is no longer working!!
 

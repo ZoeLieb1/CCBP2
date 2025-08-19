@@ -10,7 +10,7 @@ library(tidyverse)
 
 # Step 1: Load both datasets
 ntu_data <- read_csv("/Users/zoe/Desktop/CCBP/CCBP_database/data/Carbon_Market_Data_20250408.csv")        # Large NTU dataset
-additional_data <- read_csv("/Users/zoe/Desktop/CCBP/CCBP_database/data/All_databases_incl.csv")          # additional dataset
+additional_data <- read_csv("/Users/zoe/Desktop/CCBP/CCBP_database/data/All_databases_incl_cleaned.csv")          # additional dataset
 
 # Step 2: Clean column names to ensure compatibility (e.g., remove spaces, lowercase, underscores)
 ntu_data <- janitor::clean_names(ntu_data)
