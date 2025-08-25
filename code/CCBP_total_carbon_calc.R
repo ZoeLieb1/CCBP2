@@ -287,10 +287,6 @@ View(expanded_data)
 # add rows up to 2025, plant that into total cabron volumne column
 
 
-
-
-
-
 ##### @ BROOKE - I think I have resolved the c()'s actually splitting out properly. Now when I go onto your step to the expanded_data, it only shows years starting in 2024, but there should be many other years (early as 2013 has years with corresponding values)
 
 
