@@ -24,7 +24,7 @@ Set up dataframe
 Data <- read.csv("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Data from NTU (Singapore)/Carbon_Market_Data_20250408.csv")
 
 # Define keywords that indicate forest-based carbon projects
-forest_keywords <- c("REDD", "Forest", "forest", "Reforestation", "reforestation", "Afforestation", "afforestation", "Deforestation", "deforestation", "Ecosystem Conversion", "ecosystem conversion", "Peat Swamp", "peat swamp")
+forest_keywords <- c("REDD", "Forest", "forest", "Reforestation", "REFORESTATION", "reforestation", "Afforestation", "afforestation", "Deforestation", "deforestation", "Ecosystem Conversion", "ecosystem conversion", "Peat Swamp", "peat swamp", "Forestry", "forestry", "Tree", "trees", "forestation", "Forestation", "planting", "Planting", "mangrove", "Mangrove", "swamp-forest", "swamp forest", "wood", "Wood", "regeneration", "Regeneration", "regrowth", "vegetation", "seedling", "Seedling", "sapling", "Sapling", "bosque", "Bosque", "forestal", "Forestal", "plantaciones forestales", "arbol", "Arbol", "Agro-forestry", "agro-forestry", "agroforestry", "Agroforestry", "Plantation", "plantation")
 
 # Identify forest-based projects
 forest_projects_df <- Data[grepl(paste(forest_keywords, collapse = "|"), 
