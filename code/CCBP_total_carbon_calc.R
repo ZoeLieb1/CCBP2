@@ -677,6 +677,30 @@ combined_data <- rbind(verra_zel_data, combined_data)
 
 save(combined_data, file = "Combined_Carbon_Market_Data_Updated.RDATA")
 
+# checking columns
+# load the file
+load("Combined_Carbon_Market_Data_Updated.RDATA")
+
+# see what objects were loaded
+ls()
+
+colnames(combined_data)
+
+# making a data subset so that I can check for forest-based keywords
+
+# create a new dataframe with just the desired columns
+df_subset <- combined_data[, c("sum_of_credit_volume",
+                               "project_name",
+                               "project_description",
+                               "project_methodologies",
+                               "source",
+                               "project_sector",
+                               "project_sub_sector")]
+
+# quick check
+head(df_subset)
+
+
 
 # write csv
 # write.csv(data, "Combined_Carbon_Market_Data_Updated.csv", row.names = FALSE)
