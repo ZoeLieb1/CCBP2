@@ -11,62 +11,98 @@ knitr::opts_chunk$set(echo = TRUE)
 setwd("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/")
 
 # Load required libraries and install packages if necessary
+install.packages("ggalluvial")
 library(dplyr)
 library(tidyr)
 library(tidyverse)
 library(ggplot2)
 library(ggalluvial)
+
 ```
 
 Set up dataframe
 ```{r}
 #Read in csv
-Data <- read.csv("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Data from NTU (Singapore)/Carbon_Market_Data_20250408.csv")
+# Data <- read.csv("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Data from NTU (Singapore)/Carbon_Market_Data_20250408.csv")
+
+# reading in new updated and combined dataset
+load("Combined_Carbon_Market_Data.RDATA")
+Data <- combined_data
+
+head(Data)
 
 # Define keywords that indicate forest-based carbon projects
-forest_keywords <- c("REDD", "Forest", "forest", "Reforestation", "REFORESTATION", "reforestation", "Afforestation", "afforestation", "Deforestation", "deforestation", "Ecosystem Conversion", "ecosystem conversion", "Peat Swamp", "peat swamp", "Forestry", "forestry", "Tree", "trees", "forestation", "Forestation", "planting", "Planting", "mangrove", "Mangrove", "swamp-forest", "swamp forest", "wood", "Wood", "regeneration", "Regeneration", "regrowth", "vegetation", "seedling", "Seedling", "sapling", "Sapling", "bosque", "Bosque", "forestal", "Forestal", "plantaciones forestales", "arbol", "Arbol", "Agro-forestry", "agro-forestry", "agroforestry", "Agroforestry", "Plantation", "plantation")
+forest_keywords <- c("REDD", "redd", "Forest", "forest", "FOREST", "Reforestation", "REFORESTATION", "reforestation", "Afforestation", "afforestation", "AFFORESTATION", "Deforestation", "deforestation", "DEFORESTATION", "Ecosystem Conversion", "ecosystem conversion", "ECOSYSTEM CONVERSION", "Peat Swamp", "peat swamp", "PEAT SWAMP", "Forestry", "forestry", "FORESTRY", "tree", "Tree", "trees", "TREES", "TREE", "forestation", "Forestation", "FORESTATION", "planting", "Planting", "PLANTATION", "mangrove", "Mangrove", "MANGROVE", "swamp-forest", "swamp forest", "SWAMP FOREST", "Swamp Forest", "Swamp forest", "wood", "Wood", "WOOD", "regeneration", "Regeneration", "REGENERATION", "regrowth", "Regrowth", "REGROWTH", "vegetation", "VEGETATION", "Vegetation", "seedling", "Seedling", "SEEDLING", "sapling", "Sapling", "SAPLING", "bosque", "Bosque", "BOSQUE", "forestal", "Forestal", "FORESTAL", "plantaciones forestales", "PLANTACIONES FORESTALES", "arbol", "Arbol", "ARBOL", "Agro-forestry", "agro-forestry", "AGRO-FORESTRY", "agroforestry", "Agroforestry", "AGROFORESTRY", "Plantation", "plantation", "PLANTATION")
+
+
+#### NOTE TO BROOKE -- I changed the column name to match the new dataset column name for methodologies #####
 
 # Identify forest-based projects
 forest_projects_df <- Data[grepl(paste(forest_keywords, collapse = "|"), 
-                               Data$Project.Methodologies, ignore.case = TRUE), ]
+                               Data$project_methodologies, ignore.case = TRUE), ]
 
 # Print the result
 print(forest_projects_df)
 
+#### HI BROOKE - also need to change some column headings here. I think Headquarter.Country you want to be the proponent country? As in, the country funding the project but not necessarily where the project happens. I'm going on this assumption but let's change if I have gotten this wrong.
+
+
 # Ensure Sum.of.Credit.Volume is numeric (cleaning empty or non-numeric entries)
+## Data_reduced <- forest_projects_df %>%
+#   select(
+#    Headquarter.Country,
+#    Buyer.Continent,
+#    Credit.Volume = `Sum.of.Credit.Volume`,
+  #  Project.Country,
+   # Project.Continent
+#  )
+
+
 Data_reduced <- forest_projects_df %>%
   select(
-    Headquarter.Country,
-    Buyer.Continent,
-    Credit.Volume = `Sum.of.Credit.Volume`,
-    Project.Country,
-    Project.Continent
+    proponent_country_manual,
+    buyer_continent,
+    sum_of_credit_volume,
+    host_country_or_area,
+    project_continent
   )
+
+
+# Filter for complete cases (no NA or empty strings)
+# Data_complete <- Data_reduced %>%
+#  filter(
+#    complete.cases(.) &                     # Remove NA values
+#    Credit.Volume != "" &                   # Remove empty strings
+#    Headquarter.Country != "" &
+#    Buyer.Continent != "" &
+#    Project.Country != "" &
+#    Project.Continent != ""
+#  )
 
 # Filter for complete cases (no NA or empty strings)
 Data_complete <- Data_reduced %>%
   filter(
     complete.cases(.) &                     # Remove NA values
-    Credit.Volume != "" &                   # Remove empty strings
-    Headquarter.Country != "" &
-    Buyer.Continent != "" &
-    Project.Country != "" &
-    Project.Continent != ""
+    sum_of_credit_volume != "" &                   # Remove empty strings
+    proponent_country_manual != "" &
+    buyer_continent != "" &
+    host_country_or_area != "" &
+    project_continent != ""
   )
 
 Data_diff <- Data_complete %>%
-  filter(Headquarter.Country != Project.Country)
+  filter(proponent_country_manual != host_country_or_area)
 
 flow_matrix <- Data_diff %>%
-  mutate(Credit.Volume = as.numeric(Credit.Volume)) %>%  # Convert to numeric
-  group_by(Buyer.Continent, Project.Continent) %>%
-  summarise(total_volume = sum(Credit.Volume, na.rm = TRUE), .groups = "drop") %>%
+  mutate(sum_of_credit_volume = as.numeric(sum_of_credit_volume)) %>%  # Convert to numeric
+  group_by(buyer_continent, project_continent) %>%
+  summarise(total_volume = sum(sum_of_credit_volume, na.rm = TRUE), .groups = "drop") %>%
   pivot_wider(
-    names_from = Project.Continent,
+    names_from = project_continent,
     values_from = total_volume,
     values_fill = 0
   ) %>%
-  column_to_rownames("Buyer.Continent")
+  column_to_rownames("buyer_continent")
 
 # View the result
 print(flow_matrix)
@@ -128,9 +164,11 @@ p2 <- ggplot(df_long,
   theme_minimal() +
   ggtitle("Forest-based carbon flows between regions")
 
+print(p2)
+
 # Export to both plots
-ggsave("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/figures/alluvial_plot_text.png", plot = p, width = 10, height = 6, dpi = 300)
-ggsave("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/figures/alluvial_plot.png", plot = p2, width = 10, height = 6, dpi = 300)
+ggsave("/Users/zoe/Desktop/CCBP/CCBP_database/figures/alluvial_plot_text_zl_testing.png", plot = p, width = 10, height = 6, dpi = 300)
+ggsave("/Users/zoe/Desktop/CCBP/CCBP_database/figures/alluvial_plot_zl_testing.png", plot = p2, width = 10, height = 6, dpi = 300)
 
 #Create the plot for flows between countries
 # Make sure Credit.Volume is numeric
