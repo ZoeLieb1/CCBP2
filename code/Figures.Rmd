@@ -8,7 +8,7 @@ Project set up
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #Set working directory
-setwd("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/")
+setwd("/Users/zoe/Desktop/CCBP/CCBP_database")
 
 # Load required libraries and install packages if necessary
 install.packages("ggalluvial")
@@ -64,7 +64,9 @@ Data_reduced <- forest_projects_df %>%
     buyer_continent,
     sum_of_credit_volume,
     host_country_or_area,
-    project_continent
+    project_continent,
+    registry,
+    project_methodologies
   )
 
 
@@ -89,6 +91,52 @@ Data_complete <- Data_reduced %>%
     host_country_or_area != "" &
     project_continent != ""
   )
+
+save(Data_complete, file = "ccbp_market_data_forest_based.RDATA")
+
+
+##### summarising methodologies into a table #####
+
+method_summary <- Data_complete %>%
+  group_by(registry) %>%
+  summarise(
+    n_methods = n_distinct(project_methodologies),
+    methods   = paste(sort(unique(project_methodologies)), collapse = "; "),
+    .groups = "drop"
+  ) %>%
+  arrange(registry)
+
+method_summary
+
+# making a table
+
+install.packages("flextable")
+install.packages("officer")
+
+library(flextable)
+library(officer)
+
+# Build the flextable
+ft <- flextable(method_summary)
+
+# Autofit registry + count, but wrap methods column
+ft <- autofit(ft) %>%
+  width(j = 3, width = 4) %>%   # make the methods column 4 inches wide
+  set_table_properties(layout = "autofit") %>%
+  theme_vanilla() %>%
+  add_header_lines("Summary of unique forest project methodologies per registry") %>%
+  align(align = "left", part = "all")   # left-align wrapped text
+
+# Save to Word ?
+doc <- read_docx() %>%
+  body_add_flextable(ft) %>%
+  body_end_section_landscape()   # optional: makes it landscape if table is wide
+
+print(doc, target = "forest_methods_by_registry.docx")
+
+
+
+#### preparing data for alluvial plot #####
 
 Data_diff <- Data_complete %>%
   filter(proponent_country_manual != host_country_or_area)
@@ -247,3 +295,5 @@ verra_projects <- subset(Data, Registry == "Verra")
 unique(verra_projects$Project.Methodologies)
 
 ```
+```{r}
+
