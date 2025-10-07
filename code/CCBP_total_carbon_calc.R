@@ -11,6 +11,7 @@ load("Combined_Carbon_Market_Data.RDATA")
 
 ls()
 class(combined_data)
+colnames(combined_data)
 
 # Check structure
 # str(ntu_df)
@@ -39,66 +40,6 @@ combined_data$sum_of_credit_volume[!is.na(combined_data$t_co2_eq_total)] <-
 #### ICR has c() format in column "projects_estimated_annual_mitigations" - going to try to use this to add up only years until 2025 ####
 
 # Process ICR registry: extract and sum values from 'projects_estimated_annual_mitigations' up to 2025
-
-
-# clean up messy c() entries in ICR
-#### ICR try 1 - doesn't work #####
-
-combined_data$sum_of_credit_volume[data$registry == "ICR" & !is.na(combined_data$projects_estimated_annual_mitigations)] <- 
-  sapply(combined_data$projects_estimated_annual_mitigations[combined_data$registry == "ICR" & !is.na(combined_data$projects_estimated_annual_mitigations)], function(x) {
-    
-    # Extract all c(...) groups using regex
-    c_blocks <- str_extract_all(x, "c\\(([^\\)]*)\\)")[[1]]
-    
-    # If we don't have at least 3 blocks, return NA
-    if (length(c_blocks) < 3) return(NA)
-    
-    # Extract years (2nd block) and values (3rd block)
-    years_raw <- c_blocks[2]
-    values_raw <- c_blocks[3]
-    
-    # Clean years and values: remove 'c(', ')' and extra quotes
-    years <- as.numeric(str_extract_all(years_raw, "\\d{4}")[[1]])
-    values <- as.numeric(str_extract_all(values_raw, "\\d+\\.*\\d*|NA")[[1]])
-    
-    # Replace any "NA" as actual NA
-    values[values == "NA"] <- NA
-    values <- as.numeric(values)
-    
-    # Sum values for years <= 2025
-    sum(values[years <= 2025], na.rm = TRUE)
-  })
-
-
-#### hmmm... that didn't really work 
-
-### trying to extract years another way ####
-####ICR try 2 - didn't work #####
-combined_data$sum_of_credit_volume[combined_data$registry == "ICR" & !is.na(combined_data$projects_estimated_annual_mitigations)] <- 
-  sapply(combined_data$projects_estimated_annual_mitigations[combined_data$registry == "ICR" & !is.na(combined_data$projects_estimated_annual_mitigations)], function(x) {
-    # Extract all c(...) blocks
-    c_blocks <- str_extract_all(x, "c\\((.*?)\\)")[[1]]
-    
-    # Defensive check
-    if (length(c_blocks) < 3) return(NA)
-    
-    # Extract and clean year block
-    year_tokens <- unlist(str_split(c_blocks[2], ",\\s*"))
-    years <- suppressWarnings(as.numeric(str_extract(year_tokens, "\\d{4}")))
-    
-    # Extract and clean value block
-    value_tokens <- unlist(str_split(c_blocks[3], ",\\s*"))
-    values <- suppressWarnings(as.numeric(str_replace_all(value_tokens, "[^0-9\\.]+", "")))
-    
-    # Defensive check for same length
-    if (length(years) != length(values)) return(NA)
-    
-    # Sum values for years ≤ 2025
-    sum(values[years <= 2025], na.rm = TRUE)
-  })
-
-
-
 #### ICR try 3 ####
 # Load data
 combined_data
@@ -369,9 +310,8 @@ combined_data <- combined_data %>%
   ) %>%
   select(-sum_of_credit_volume_from_expanded)
 
+
 ### ICR done ####
-
-
 
 
 
@@ -689,8 +629,12 @@ colnames(combined_data)
 # making a data subset so that I can check for forest-based keywords
 
 # create a new dataframe with just the desired columns
-df_subset <- combined_data[, c("sum_of_credit_volume",
+df_subset_orig_combined <- combined_data[, c("sum_of_credit_volume",
                                "project_name",
+                               "proponent_country_manual",
+                               "buyer_continent",
+                               "host_country_or_area",
+                               "project_continent",
                                "project_description",
                                "project_methodologies",
                                "source",
@@ -700,10 +644,134 @@ df_subset <- combined_data[, c("sum_of_credit_volume",
 # quick check
 head(df_subset)
 
+unique(df_subset_orig_combined$proponent_country_manual)
+unique(df_subset_orig_combined$host_country_or_area)
+
 
 
 # write csv
 # write.csv(data, "Combined_Carbon_Market_Data_Updated.csv", row.names = FALSE)
+
+
+
+##### fixing missing continents in ZEL_search entries #####
+
+# need to auto-fill continent from proponent_country_manual into buyer_continent and host_country_or_area into project_continent
+
+### what should we do about multi-country entries? A handful of projects have more than one country as proponent
+
+library(dplyr)
+install.packages("countrycode")
+library(countrycode)
+library(stringr)
+
+
+## 1. first doing proponent_country_manual to buyer_continent ##
+
+# only looking at ZEL_search rows (because all of these are missing continent)
+
+combined_data <- combined_data %>%
+  mutate(
+    buyer_continent = case_when(
+      # Only apply to ZEL_search rows
+      source == "ZEL_search" & str_detect(proponent_country_manual, "[/,]") ~ NA_character_,
+      # Some entries need manual entry
+      source == "ZEL_search" & proponent_country_manual %in% c("Hong Kong") ~ "Asia",
+      source == "ZEL_search" & proponent_country_manual %in% c("Jersey") ~ "Europe",
+      source == "ZEL_search" & proponent_country_manual %in% c("Bermuda", "Cayman Islands", "Bahamas") ~ "North America",
+      source == "ZEL_search" & proponent_country_manual %in% c("Republic of Mauritius", "Mauritius") ~ "Africa",
+      source == "ZEL_search" & proponent_country_manual %in% c("Republic of Korea (South Korea)", "South Korea") ~ "Asia",
+      source == "ZEL_search" & proponent_country_manual %in% c("United Kindgom", "United Kingdom of Great Britain and Northern Ireland", "United Kingdom") ~ "Europe",
+      
+      # Automatic lookup for other ZEL_search rows
+      source == "ZEL_search" ~ countrycode(proponent_country_manual, origin = "country.name", destination = "continent"),
+      
+      # Leave all others unchanged
+      TRUE ~ buyer_continent
+    )
+  )
+
+
+# checking what came out for continent with ZEL_search
+
+combined_data %>%
+  filter(source == "ZEL_search") %>%
+  count(buyer_continent, sort = TRUE)
+
+
+# checking for unfixed rows - no continent added, could be due to typos, missed a manual entry, or multi-entries
+
+unmapped_countries <- combined_data %>%
+  filter(source == "ZEL_search", is.na(buyer_continent)) %>%
+  distinct(proponent_country_manual) %>%
+  arrange(proponent_country_manual)
+
+# View in console
+unmapped_countries
+
+
+
+### 2. doing all the same, but for host country/continent ###
+
+# --- HOST COUNTRY → PROJECT CONTINENT MAPPING ---
+
+
+# Trim whitespace before matching
+combined_data <- combined_data %>%
+  mutate(host_country_or_area = trimws(host_country_or_area)) %>%
+  mutate(
+    project_continent = case_when(
+      # --- Skip multi-country or "International" entries ---
+      str_detect(host_country_or_area, "[/,]") ~ NA_character_,
+      host_country_or_area %in% c("International") ~ NA_character_,
+      
+      # --- Manual corrections for known cases and special codes ---
+      host_country_or_area %in% c("MX", "US") ~ "North America",
+      host_country_or_area %in% c("Viet Nam", "Vietnam") ~ "Asia",
+      host_country_or_area %in% c("Republic of Korea", "South Korea") ~ "Asia",
+      host_country_or_area %in% c("Lao People's Democratic Republic", "Laos") ~ "Asia",
+      host_country_or_area %in% c("Timor-Leste") ~ "Asia",
+      host_country_or_area %in% c("Taiwan") ~ "Asia",
+      host_country_or_area %in% c("Papua New Guinea", "Fiji", "Vanuatu", "Solomon Islands", "New Caledonia") ~ "Oceania",
+      host_country_or_area %in% c("Mauritius") ~ "Africa",
+      host_country_or_area %in% c("Côte d'Ivoire") ~ "Africa",
+      host_country_or_area %in% c("Congo, Dem. Rep", "Congo, Rep.") ~ "Africa",
+      host_country_or_area %in% c("Kosovo") ~ "Europe",
+      host_country_or_area %in% c("Guyana") ~ "South America",
+      host_country_or_area %in% c("Aruba") ~ "North America",
+
+      
+      # --- Flexible matching for Congo variants ---
+      str_detect(host_country_or_area, "^Congo") ~ "Africa",
+      str_detect(host_country_or_area, "Dem\\. Rep") ~ "Africa",
+      str_detect(host_country_or_area, "Rep\\.") ~ "Africa",
+      
+      # --- Automatic lookup for all other single-country entries ---
+      TRUE ~ countrycode(host_country_or_area, origin = "country.name", destination = "continent")
+    )
+  )
+
+### check for unmatched hosts
+
+unmapped_hosts <- combined_data %>%
+  filter(is.na(project_continent)) %>%
+  distinct(host_country_or_area) %>%
+  arrange(host_country_or_area)
+
+unmapped_hosts
+
+### hmm... can't seem to fix Congo issue... did space trim, added flexible matching, still not working.
+
+
+
+# checking NAs for new continent entries
+
+# Check which sources now have continent values
+combined_data %>%
+  count(source, !is.na(buyer_continent), !is.na(project_continent))
+
+
+
 
 
 
