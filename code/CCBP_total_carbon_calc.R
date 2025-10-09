@@ -3,6 +3,7 @@
 library(stringr)
 library(dplyr)
 library(lubridate)
+library(tidyr)
 
 #### first bringing CAR units into "sum of credit volume column originally in NTU #####
 
@@ -660,17 +661,68 @@ unique(df_subset_orig_combined$host_country_or_area)
 
 ### what should we do about multi-country entries? A handful of projects have more than one country as proponent
 
+# first thing - this is how we are separating out multi-country proponents entries, then onto auto-filling continent
+
+#### Spliting out mult-country entries in proponent_country_manual and dividing up sum_of_credit_volume amount ###
+
+# -------------------------------------------------------------------
+# STEP 1 — Identify and isolate only multi-country rows
+# -------------------------------------------------------------------
+multi_country_rows <- combined_data %>%
+  filter(str_detect(proponent_country_manual, "[/,]"))
+
+# -------------------------------------------------------------------
+# STEP 2 — Split country names into separate rows
+#           (keeping all other columns the same)
+# -------------------------------------------------------------------
+multi_country_expanded <- multi_country_rows %>%
+  # Split on commas or slashes, trim spaces
+  separate_rows(proponent_country_manual, sep = "[/,]") %>%
+  mutate(proponent_country_manual = str_trim(proponent_country_manual))
+
+# -------------------------------------------------------------------
+# STEP 3 — Divide `sum_of_credit_volume` evenly among split rows
+# -------------------------------------------------------------------
+multi_country_expanded <- multi_country_expanded %>%
+  group_by(across(-c(proponent_country_manual, sum_of_credit_volume))) %>% # group by all other cols
+  mutate(
+    n_countries = n(),                                    # count how many countries the row was split into
+    sum_of_credit_volume = sum_of_credit_volume / n_countries  # divide credit volume evenly
+  ) %>%
+  ungroup() %>%
+  select(-n_countries)   # remove helper column
+
+# -------------------------------------------------------------------
+# STEP 4 — Verify result
+# -------------------------------------------------------------------
+multi_country_expanded %>%
+  select(proponent_country_manual, sum_of_credit_volume) %>%
+  head()
+
+# -----------
+# Step 5 - recombine
+# -----------
+# re-combine back into combined_data dataset #
+
+combined_data_expanded <- combined_data %>%
+  # Remove the original multi-country rows
+  filter(!str_detect(proponent_country_manual, "[/,]")) %>%
+  # Add the new expanded rows
+  bind_rows(multi_country_expanded)
+
+
+##### Countries to continents columns auto-fill #####
+
 library(dplyr)
 install.packages("countrycode")
 library(countrycode)
 library(stringr)
 
-
-## 1. first doing proponent_country_manual to buyer_continent ##
+## 1. proponent_country_manual to buyer_continent ##
 
 # only looking at ZEL_search rows (because all of these are missing continent)
 
-combined_data <- combined_data %>%
+combined_data_expanded <- combined_data_expanded %>%
   mutate(
     buyer_continent = case_when(
       # Only apply to ZEL_search rows
@@ -694,14 +746,14 @@ combined_data <- combined_data %>%
 
 # checking what came out for continent with ZEL_search
 
-combined_data %>%
+combined_data_expanded %>%
   filter(source == "ZEL_search") %>%
   count(buyer_continent, sort = TRUE)
 
 
 # checking for unfixed rows - no continent added, could be due to typos, missed a manual entry, or multi-entries
 
-unmapped_countries <- combined_data %>%
+unmapped_countries <- combined_data_expanded %>%
   filter(source == "ZEL_search", is.na(buyer_continent)) %>%
   distinct(proponent_country_manual) %>%
   arrange(proponent_country_manual)
@@ -717,7 +769,7 @@ unmapped_countries
 
 
 # Trim whitespace before matching
-combined_data <- combined_data %>%
+combined_data_expanded <- combined_data_expanded %>%
   mutate(host_country_or_area = trimws(host_country_or_area)) %>%
   mutate(
     project_continent = case_when(
@@ -753,7 +805,7 @@ combined_data <- combined_data %>%
 
 ### check for unmatched hosts
 
-unmapped_hosts <- combined_data %>%
+unmapped_hosts <- combined_data_expanded %>%
   filter(is.na(project_continent)) %>%
   distinct(host_country_or_area) %>%
   arrange(host_country_or_area)
@@ -762,15 +814,11 @@ unmapped_hosts
 
 ### hmm... can't seem to fix Congo issue... did space trim, added flexible matching, still not working.
 
-
-
 # checking NAs for new continent entries
 
 # Check which sources now have continent values
-combined_data %>%
+combined_data_expanded %>%
   count(source, !is.na(buyer_continent), !is.na(project_continent))
-
-
 
 
 
