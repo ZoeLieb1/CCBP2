@@ -26,20 +26,38 @@ Set up dataframe
 # Data <- read.csv("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Data from NTU (Singapore)/Carbon_Market_Data_20250408.csv")
 
 # reading in new updated and combined dataset
-load("Combined_Carbon_Market_Data.RDATA")
-Data <- combined_data
+load("Combined_Carbon_Market_Data_Expanded.RDATA")
+Data <- combined_data_expanded
 
 head(Data)
 
 # Define keywords that indicate forest-based carbon projects
-forest_keywords <- c("REDD", "redd", "Forest", "forest", "FOREST", "Reforestation", "REFORESTATION", "reforestation", "Afforestation", "afforestation", "AFFORESTATION", "Deforestation", "deforestation", "DEFORESTATION", "Ecosystem Conversion", "ecosystem conversion", "ECOSYSTEM CONVERSION", "Peat Swamp", "peat swamp", "PEAT SWAMP", "Forestry", "forestry", "FORESTRY", "tree", "Tree", "trees", "TREES", "TREE", "forestation", "Forestation", "FORESTATION", "planting", "Planting", "PLANTATION", "mangrove", "Mangrove", "MANGROVE", "swamp-forest", "swamp forest", "SWAMP FOREST", "Swamp Forest", "Swamp forest", "wood", "Wood", "WOOD", "regeneration", "Regeneration", "REGENERATION", "regrowth", "Regrowth", "REGROWTH", "vegetation", "VEGETATION", "Vegetation", "seedling", "Seedling", "SEEDLING", "sapling", "Sapling", "SAPLING", "bosque", "Bosque", "BOSQUE", "forestal", "Forestal", "FORESTAL", "plantaciones forestales", "PLANTACIONES FORESTALES", "arbol", "Arbol", "ARBOL", "Agro-forestry", "agro-forestry", "AGRO-FORESTRY", "agroforestry", "Agroforestry", "AGROFORESTRY", "Plantation", "plantation", "PLANTATION")
+forest_keywords <- c("REDD", "redd", "Forest", "forest", "FOREST", "Reforestation", "REFORESTATION", "reforestation", "Afforestation", "afforestation", "AFFORESTATION", "Deforestation", "deforestation", "DEFORESTATION", "Ecosystem Conversion", "ecosystem conversion", "ECOSYSTEM CONVERSION", "Peat Swamp", "peat swamp", "PEAT SWAMP", "Forestry", "forestry", "FORESTRY", "tree", "Tree", "trees", "TREES", "TREE", "forestation", "Forestation", "FORESTATION", "planting", "Planting", "PLANTATION", "mangrove", "Mangrove", "MANGROVE", "swamp-forest", "swamp forest", "SWAMP FOREST", "Swamp Forest", "Swamp forest", "wood", "Wood", "WOOD", "regeneration", "Regeneration", "REGENERATION", "regrowth", "Regrowth", "REGROWTH", "vegetation", "VEGETATION", "Vegetation", "seedling", "Seedling", "SEEDLING", "sapling", "Sapling", "SAPLING", "bosque", "Bosque", "BOSQUE", "forestal", "Forestal", "FORESTAL", "plantaciones forestales", "PLANTACIONES FORESTALES", "arbol", "Arbol", "ARBOL", "Agro-forestry", "agro-forestry", "AGRO-FORESTRY", "agroforestry", "Agroforestry", "AGROFORESTRY", "Plantation", "plantation", "PLANTATION", "woodland", "Woodland", "WOODLAND")
 
 
 #### NOTE TO BROOKE -- I changed the column name to match the new dataset column name for methodologies #####
 
-# Identify forest-based projects
-forest_projects_df <- Data[grepl(paste(forest_keywords, collapse = "|"), 
-                               Data$project_methodologies, ignore.case = TRUE), ]
+# Identify forest-based projects -- only for methodologies - ZEL expanded to project_name and project_description in code below
+
+# forest_projects_df <- Data[grepl(paste(forest_keywords, collapse = "|"), 
+                           #    Data$project_methodologies, ignore.case = TRUE), ]
+
+
+### ZEL - Expand filter to include more than just methodologies column for keyword filter - added project_name and project_description
+
+forest_projects_df <- Data %>%
+  filter(
+    str_detect(project_methodologies, regex(paste(forest_keywords, collapse = "|"), ignore_case = TRUE)) |
+    str_detect(project_name, regex(paste(forest_keywords, collapse = "|"), ignore_case = TRUE)) |
+    str_detect(project_description, regex(paste(forest_keywords, collapse = "|"), ignore_case = TRUE))
+  )
+
+forest_projects_by_registry <- forest_projects_df %>%
+  count(registry, sort = TRUE)
+
+forest_projects_by_registry
+
+## seems to work! All of the registries I expected to see are here.
 
 # Print the result
 print(forest_projects_df)
@@ -66,7 +84,8 @@ Data_reduced <- forest_projects_df %>%
     host_country_or_area,
     project_continent,
     registry,
-    project_methodologies
+    project_methodologies,
+    source
   )
 
 
@@ -91,6 +110,10 @@ Data_complete <- Data_reduced %>%
     host_country_or_area != "" &
     project_continent != ""
   )
+
+head(Data_complete)
+print(Data_complete)
+
 
 save(Data_complete, file = "ccbp_market_data_forest_based.RDATA")
 
@@ -127,12 +150,63 @@ ft <- autofit(ft) %>%
   add_header_lines("Summary of unique forest project methodologies per registry") %>%
   align(align = "left", part = "all")   # left-align wrapped text
 
-# Save to Word ?
+# Save to Word
 doc <- read_docx() %>%
   body_add_flextable(ft) %>%
   body_end_section_landscape()   # optional: makes it landscape if table is wide
 
-print(doc, target = "forest_methods_by_registry.docx")
+print(doc, target = "forest_methods_by_registry_try4.docx")
+
+###--------------------------------------------
+###--------------------------------------------
+
+##### Finding duplicates in methodologies #####
+
+# Load required packages
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(flextable)
+library(officer)
+
+method_summary_clean <- method_summary %>%
+  rowwise() %>%
+  mutate(
+    # split into a list of methods per registry
+    methods_vec = list(str_split(methods, ";\\s*")[[1]] %>% str_trim()),
+    # remove duplicates + sort
+    methods_unique = list(sort(unique(methods_vec))),
+    # recombine into string
+    methods = paste(methods_unique, collapse = "; "),
+    # count unique
+    n_methods = length(methods_unique)
+  ) %>%
+  ungroup() %>%
+  select(registry, n_methods, methods) %>%
+  arrange(registry)
+
+# --- make nicely wrapped table for Word ---
+ft <- flextable(method_summary_clean) %>%
+  autofit() %>%
+  width(j = 3, width = 4) %>%   # wrap 3rd column (methods)
+  set_table_properties(layout = "autofit") %>%
+  theme_vanilla() %>%
+  add_header_lines("Summary of unique forest project methodologies per registry (deduplicated)") %>%
+  align(align = "left", part = "all")
+
+ft
+# --- export to Word file ---
+doc <- read_docx() %>%
+  body_add_flextable(ft) %>%
+  body_end_section_landscape()   # optional: remove if you prefer portrait
+
+print(doc, target = "forest_methods_by_registry_deduplicated.docx")
+
+
+
+
+
+
 
 
 
