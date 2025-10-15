@@ -796,7 +796,6 @@ combined_data_expanded <- combined_data_expanded %>%
       # --- Flexible matching for Congo variants ---
       str_detect(host_country_or_area, "^Congo") ~ "Africa",
       str_detect(host_country_or_area, "Dem\\. Rep") ~ "Africa",
-      str_detect(host_country_or_area, "Rep\\.") ~ "Africa",
       
       # --- Automatic lookup for all other single-country entries ---
       TRUE ~ countrycode(host_country_or_area, origin = "country.name", destination = "continent")
@@ -822,4 +821,9 @@ combined_data_expanded %>%
 
 
 
+
+save(combined_data_expanded, file = "Combined_Carbon_Market_Data_Expanded.RDATA")
+
+#### Confused about workflow here -- ####
+# Hi Brooke - from here, I think I should re-save as a new RDATA file, and then replace that file in the Figures.RMD file. So that way we're working with the new data as a whole new thing, rather than re-assigning this updated dataset to the old RDATA file... because that seems like it might get circular when we go to rerun the code? Right? Hesitant to move forward with that until I can show you what I did here.
 
