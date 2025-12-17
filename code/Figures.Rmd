@@ -221,6 +221,8 @@ print(doc, target = "forest_methods_by_registry_deduplicated.docx")
 
 #### Step 1 - Clean and aggrigate data ####
 
+#### Step 1 - Clean and aggrigate data ####
+
 library(tidyverse)
 library(countrycode)
 library(readxl)
@@ -407,188 +409,152 @@ gov_host_plot_faceted_labeled <- ggplot(
 print(gov_host_plot_faceted_labeled)
 
 
+## Adding GDP per capita to make graduated size symbols
+
+gdp_path <- "/Users/zoe/Desktop/CCBP/CCBP_database/data/GDP_world_data/gdp_world_data_country.csv"
+
+library(readr)
+
+gdp <- read_csv(
+  "/Users/zoe/Desktop/CCBP/CCBP_database/data/GDP_world_data/gdp_world_data_country.csv",
+  show_col_types = FALSE
+)
 
 
+str(gdp)
+head(gdp)
 
-### ------ ###
-### ------ ###
-### ------ ###
-### ------ ###
-### ------ ###
-### ------ ###
+# clean and simplifty data
 
-### OLD CODE, DRAFT 1 ###
-
-# Step 1 - reading in governance metric data from QGI
-
-wgi_path <- "/Users/zoe/Desktop/CCBP/CCBP_database/data/gov_indicators_wgi/wgidataset.xlsx"
-
-wgi <- read_excel(wgi_path)
-
-## first, only using "cc" (corruption control) metric
-
-# Step 2 - filter for cc in "indicator"
-
-wgi_cc <- wgi %>%
-  filter(indicator == "cc") %>%
-  group_by(code) %>%
-  filter(year == max(year, na.rm = TRUE)) %>%
-  ungroup() %>%
-  select(
-    iso3c = code,
-    countryname,
-    year,
-    cc_estimate = estimate
+gdp_2024 <- gdp %>%
+  transmute(
+    iso3c = country_code,
+    gdp_pc_2024.y = as.numeric(`2024`)
   )
 
-## Step 3 - aggregate carbon credits per host country, and check country names
-
-host_carbon_totals <- Data_complete %>%
-  group_by(host_country_or_area) %>%
-  summarise(
-    total_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-### I see some mistakes in country names, so fixing here
-
-host_carbon_totals <- host_carbon_totals %>%
-  mutate(
-    host_country_or_area = case_when(
-      host_country_or_area %in% c("US", "United States") ~ "United States of America",
-      host_country_or_area %in% c("MX", "Mexico")        ~ "Mexico",
-      TRUE ~ host_country_or_area
-    )
-  )
-
-## recombining those categories again
-
-host_carbon_totals <- host_carbon_totals %>%
-  group_by(host_country_or_area) %>%
-  summarise(
-    total_credit_volume = sum(total_credit_volume, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# check the fix
-
-country_check <- host_carbon_totals %>%
-  filter(host_country_or_area %in% c("United States of America", "Mexico"))
 
 
+## joining on ISO3
 
-### Step 4. assigning ISO-3 country codes to carbon data
-
-host_carbon_totals <- host_carbon_totals %>%
-  mutate(
-    iso3c = countrycode(
-      host_country_or_area,
-      origin = "country.name",
-      destination = "iso3c"
-    )
-  )
-
-host_carbon_totals <- host_carbon_totals %>%
-  mutate(
-    iso3c = case_when(
-      iso3c == "COD" ~ "ZAR",  # DR Congo (Zaire in WGI)
-      iso3c == "ROU" ~ "ROM",  # Romania (older ISO in WGI)
-      TRUE ~ iso3c
-    )
-  )
-
-# check
-
-iso_check <- host_carbon_totals %>%
-  filter(is.na(iso3c)) %>%
-  distinct(host_country_or_area)
-
-## the only country to have no CC value is Timor-Leste
+host_carbon_wgi_long <- host_carbon_wgi_long %>%
+  left_join(gdp_2024, by = "iso3c")
 
 
-### Step 5 - join carbon data to governance data
+summary(host_carbon_wgi_long$gdp_pc_2024.y)
 
-host_carbon_wgi <- host_carbon_totals %>%
-  left_join(wgi_cc, by = "iso3c")
+host_carbon_wgi_long %>%
+  filter(is.na(gdp_pc_2024.y)) %>%
+  distinct(countryname, iso3c)
 
-# check
-summary(host_carbon_wgi$cc_estimate)
 
-### Step 6 - making the plot ###
+head(gdp_2024$iso3c)
+unique(nchar(gdp_2024$iso3c))
 
-# convert to numeric
+host_carbon_wgi_long <- host_carbon_wgi_long %>%
+  rename(gdp_pc_2024 = gdp_pc_2024.y)
 
-host_carbon_wgi <- host_carbon_wgi %>%
-  mutate(
-    cc_estimate = as.numeric(cc_estimate)
-  )
-
-# setting x axis scales
-
-### changing x axis abreviated numbers
+##### adding GDP into facet wrap #####
 
 library(scales)
+library(ggrepel)
 
-# making country labels for country points
-
-# label_countries <- host_carbon_wgi_plot %>%
-#   arrange(desc(total_credit_volume)) %>%
-#  slice_head(n = 10)
-
-# label countries at all ends of the scales
-
-label_countries <- bind_rows(
-  host_carbon_wgi_plot %>% slice_max(total_credit_volume, n = 3),
-  host_carbon_wgi_plot %>% slice_min(total_credit_volume, n = 3),
-  host_carbon_wgi_plot %>% slice_max(cc_estimate, n = 3),
-  host_carbon_wgi_plot %>% slice_min(cc_estimate, n = 3)
-) %>%
-  distinct(iso3c, .keep_all = TRUE)
-
-
-
-gov_host_plot_labeled <- ggplot(host_carbon_wgi_plot,
-                                aes(x = total_credit_volume, y = cc_estimate)) +
-  geom_point(alpha = 0.6, size = 2) +
+gov_host_plot_faceted_gdp <- ggplot(
+  host_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024)
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024
+  )
+) +
+  geom_point(alpha = 0.6) +
   
   geom_text_repel(
-    data = label_countries,
-    aes(label = countryname),
-    size = 3,
-    max.overlaps = Inf,
+    data = label_countries_facets,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = countryname
+    ),
+    size = 2.8,
     box.padding = 0.4,
     point.padding = 0.3,
-    segment.color = "grey60"
+    segment.color = "grey60",
+    max.overlaps = Inf
   ) +
   
-  scale_x_continuous(
-    labels = scales::label_number(
-      scale_cut = scales::cut_si(""),
+  scale_x_log10(
+    labels = label_number(
+      scale_cut = cut_si(""),
       accuracy = 1
     )
   ) +
-  scale_y_continuous(n.breaks = 5) +
-  labs(
-    x = "Total forest-based carbon credit volume",
-    y = "Control of Corruption (WGI)",
-    title = "Forest-based carbon project volume vs governance (host countries)"
+  
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    trans = "log10",
+    range = c(1.5, 6),
+    labels = label_dollar(accuracy = 1)
   ) +
-  theme_minimal()
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+  
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  
+  labs(
+    x = "Total forest-based carbon credit volume (log scale)",
+    y = "Governance score (WGI)",
+    title = "Forest-based carbon project volume vs governance",
+    subtitle = "Point size scaled by GDP per capita (2024)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    strip.text = element_text(face = "bold"),
+    legend.position = "right"
+  )
 
-print(gov_host_plot_labeled)
+print(gov_host_plot_faceted_gdp)
 
 
+#### trying to plot with GDP logged ####
 
-### plotting it with log scale x-axis
-
-gov_host_plot_log <- ggplot(host_carbon_wgi_plot,
-                            aes(x = total_credit_volume, y = cc_estimate)) +
-  geom_point(alpha = 0.6, size = 2) +
+gov_host_plot_faceted_gdp <- ggplot(
+  host_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024.y),
+      gdp_pc_2024.y > 0
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024.y
+  )
+) +
+  geom_point(alpha = 0.6) +
   
   geom_text_repel(
-    data = label_countries,
-    aes(label = countryname),
-    size = 3,
+    data = label_countries_facets,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = countryname
+    ),
+    size = 2.8,
     box.padding = 0.4,
     point.padding = 0.3,
     segment.color = "grey60",
@@ -601,188 +567,60 @@ gov_host_plot_log <- ggplot(host_carbon_wgi_plot,
       accuracy = 1
     )
   ) +
+  
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    trans = "log10",
+    range = c(1.5, 6),
+    labels = scales::label_dollar(accuracy = 1)
+  ) +
+  
   scale_y_continuous(n.breaks = 5) +
   
   geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
   
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  
   labs(
     x = "Total forest-based carbon credit volume (log scale)",
-    y = "Control of Corruption (WGI)",
-    title = "Forest-based carbon project volume vs governance (host countries)",
-    subtitle = "Log-scaled x-axis"
+    y = "Governance score (WGI)",
+    title = "Forest-based carbon project volume vs governance",
+    subtitle = "Point size scaled by log GDP per capita (2024)"
   ) +
+  
   theme_minimal()
 
-print(gov_host_plot_log)
+print(gov_host_plot_faceted_gdp)
 
-# -------- #
 
-# -------- #
+#### Linear GDP size, unlogged 
 
-# -------- #
 
-##### making the same plot, but with Regulatory Quality metric from WGI instead #####
-
-wgi_rq <- wgi %>%
-  filter(indicator == "rq") %>%
-  group_by(code) %>%
-  filter(year == max(year, na.rm = TRUE)) %>%
-  ungroup() %>%
-  select(
-    iso3c = code,
-    countryname,
-    year,
-    rq_estimate = estimate
+gov_host_plot_faceted_gdp <- ggplot(
+  host_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024),
+      gdp_pc_2024.y > 0
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024
   )
-
-## Step 3 - aggregate carbon credits per host country, and check country names
-
-host_carbon_totals <- Data_complete %>%
-  group_by(host_country_or_area) %>%
-  summarise(
-    total_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-### I see some mistakes in country names, so fixing here
-
-host_carbon_totals <- host_carbon_totals %>%
-  mutate(
-    host_country_or_area = case_when(
-      host_country_or_area %in% c("US", "United States") ~ "United States of America",
-      host_country_or_area %in% c("MX", "Mexico")        ~ "Mexico",
-      TRUE ~ host_country_or_area
-    )
-  )
-
-## recombining those categories again
-
-host_carbon_totals <- host_carbon_totals %>%
-  group_by(host_country_or_area) %>%
-  summarise(
-    total_credit_volume = sum(total_credit_volume, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# check the fix
-
-country_check <- host_carbon_totals %>%
-  filter(host_country_or_area %in% c("United States of America", "Mexico"))
-
-
-
-### Step 4. assigning ISO-3 country codes to carbon data
-
-host_carbon_totals <- host_carbon_totals %>%
-  mutate(
-    iso3c = countrycode(
-      host_country_or_area,
-      origin = "country.name",
-      destination = "iso3c"
-    )
-  )
-
-host_carbon_totals <- host_carbon_totals %>%
-  mutate(
-    iso3c = case_when(
-      iso3c == "COD" ~ "ZAR",  # DR Congo (Zaire in WGI)
-      iso3c == "ROU" ~ "ROM",  # Romania (older ISO in WGI)
-      TRUE ~ iso3c
-    )
-  )
-
-# check
-
-iso_check <- host_carbon_totals %>%
-  filter(is.na(iso3c)) %>%
-  distinct(host_country_or_area)
-
-## the only country to have no CC value is Timor-Leste
-
-
-### Step 5 - join carbon data to governance data
-
-host_carbon_wgi_rq <- host_carbon_totals %>%
-  left_join(wgi_rq, by = "iso3c")
-
-# check
-summary(host_carbon_wgi_rq$rq_estimate)
-
-### Step 6 - making the plot ###
-
-# convert to numeric
-
-host_carbon_wgi_rq <- host_carbon_wgi_rq %>%
-  mutate(
-    rq_estimate = as.numeric(rq_estimate)
-  )
-
-# setting x axis scales
-
-### changing x axis abreviated numbers
-
-library(scales)
-
-# making country labels for country points
-
-# label_countries <- host_carbon_wgi_plot %>%
-#   arrange(desc(total_credit_volume)) %>%
-#  slice_head(n = 10)
-
-# label countries at all ends of the scales
-
-label_countries <- bind_rows(
-  host_carbon_wgi_plot %>% slice_max(total_credit_volume, n = 3),
-  host_carbon_wgi_plot %>% slice_min(total_credit_volume, n = 3),
-  host_carbon_wgi_plot %>% slice_max(cc_estimate, n = 3),
-  host_carbon_wgi_plot %>% slice_min(cc_estimate, n = 3)
-) %>%
-  distinct(iso3c, .keep_all = TRUE)
-
-
-
-gov_host_plot_labeled_rq <- ggplot(host_carbon_wgi_plot,
-                                aes(x = total_credit_volume, y = rq_estimate)) +
-  geom_point(alpha = 0.6, size = 2) +
+) +
+  geom_point(alpha = 0.6) +
   
   geom_text_repel(
-    data = label_countries,
-    aes(label = countryname),
-    size = 3,
-    max.overlaps = Inf,
-    box.padding = 0.4,
-    point.padding = 0.3,
-    segment.color = "grey60"
-  ) +
-  
-  scale_x_continuous(
-    labels = scales::label_number(
-      scale_cut = scales::cut_si(""),
-      accuracy = 1
-    )
-  ) +
-  scale_y_continuous(n.breaks = 5) +
-  labs(
-    x = "Total forest-based carbon credit volume",
-    y = "Regulatory quality (WGI)",
-    title = "Forest-based carbon project volume vs governance (host countries)"
-  ) +
-  theme_minimal()
-
-print(gov_host_plot_labeled_rq)
-
-
-
-### plotting it with log scale x-axis
-
-gov_host_plot_log <- ggplot(host_carbon_wgi_plot,
-                            aes(x = total_credit_volume, y = cc_estimate)) +
-  geom_point(alpha = 0.6, size = 2) +
-  
-  geom_text_repel(
-    data = label_countries,
-    aes(label = countryname),
-    size = 3,
+    data = label_countries_facets,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = countryname
+    ),
+    size = 2.8,
     box.padding = 0.4,
     point.padding = 0.3,
     segment.color = "grey60",
@@ -795,19 +633,176 @@ gov_host_plot_log <- ggplot(host_carbon_wgi_plot,
       accuracy = 1
     )
   ) +
+  
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    range = c(1.5, 6),
+    labels = scales::label_dollar(accuracy = 1)
+  ) +
+  
   scale_y_continuous(n.breaks = 5) +
   
-  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+  
+  facet_wrap(~ indicator_label, scales = "free_y") +
   
   labs(
     x = "Total forest-based carbon credit volume (log scale)",
-    y = "Control of Corruption (WGI)",
-    title = "Forest-based carbon project volume vs governance (host countries)",
-    subtitle = "Log-scaled x-axis"
+    y = "Governance score (WGI)",
+    title = "Forest-based carbon project volume vs governance",
+    subtitle = "Point size scaled by GDP per capita (2024)"
   ) +
+  
   theme_minimal()
 
-print(gov_host_plot_log)
+print(gov_host_plot_faceted_gdp)
+
+
+#### bringing in continent from Data_complete #####
+
+# Step 1 - extract continent at the country ISO3 level
+
+host_country_continent <- Data_complete %>%
+  mutate(
+    host_country_or_area = case_when(
+      host_country_or_area %in% c("US", "United States") ~ "United States of America",
+      host_country_or_area %in% c("MX", "Mexico")        ~ "Mexico",
+      host_country_or_area %in% c("Republic of Moldova", "Moldova") ~ "Moldova",
+      TRUE ~ host_country_or_area
+    )
+  ) %>%
+  distinct(host_country_or_area, project_continent) %>%
+  mutate(
+    iso3c = countrycode(
+      host_country_or_area,
+      origin = "country.name",
+      destination = "iso3c"
+    ),
+    iso3c = case_when(
+      iso3c == "COD" ~ "ZAR",
+      iso3c == "ROU" ~ "ROM",
+      TRUE ~ iso3c
+    )
+  )
+
+# Step 2 — Collapse to one continent per ISO3
+
+host_country_continent_iso <- host_country_continent %>%
+  group_by(iso3c) %>%
+  summarise(
+    project_continent = first(project_continent),
+    .groups = "drop"
+  )
+
+host_country_continent_iso %>%
+  count(project_continent)
+
+## fixing South America into "Americas"
+
+host_country_continent_iso <- host_country_continent_iso %>%
+  mutate(
+    project_continent = case_when(
+      project_continent %in% c("South America", "North America") ~ "Americas",
+      TRUE ~ project_continent
+    )
+  )
+
+
+
+# Step 3 — Join continent onto your master plotting dataset
+
+host_carbon_wgi_long <- host_carbon_wgi_long %>%
+  left_join(host_country_continent_iso, by = "iso3c")
+
+# check
+
+unique(host_carbon_wgi_long$project_continent)
+
+
+# Step 4 - Update the plot with continents
+
+continent_colors <- c(
+  "Americas" = "#90C2E7",
+  "Africa"   = "#4F4D80",
+  "Asia" = "#A37466",
+  "Europe" = "#98A886",
+  "Oceania" = "#415662"
+  
+)
+
+
+gov_host_plot_faceted_gdp <- ggplot(
+  host_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024),
+      !is.na(project_continent)
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024,
+    colour = project_continent
+  )
+) +
+  geom_point(alpha = 0.7) +
+  
+  geom_text_repel(
+    data = label_countries_facets,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = countryname
+    ),
+    size = 2.8,
+    colour = "black",   # keep labels readable
+    box.padding = 0.4,
+    point.padding = 0.3,
+    segment.color = "grey60",
+    max.overlaps = Inf
+  ) +
+  
+  scale_x_log10(
+    labels = scales::label_number(
+      scale_cut = scales::cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  scale_colour_manual(
+    name = "Continent",
+    values = continent_colors
+  ) +
+
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    range = c(1.5, 6),
+    labels = scales::label_dollar(accuracy = 1)
+  ) +
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  
+  labs(
+    x = "Total forest-based carbon credit volume (log scale)",
+    y = "Governance score (WGI)",
+    colour = "Continent",
+    title = "Forest-based carbon project volume vs governance",
+    subtitle = "Point colour = continent; point size = GDP per capita (2024)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right"
+  )
+
+print(gov_host_plot_faceted_gdp)
 
 
 
