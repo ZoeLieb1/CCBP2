@@ -1,42 +1,84 @@
 #### Step 1 - Clean and aggrigate data ####
 
+#### Step 1 - Clean and aggrigate data ####
+
 library(tidyverse)
 library(countrycode)
 library(readxl)
 library(scales)
 library(ggrepel)
 
-  host_carbon_totals <- Data_complete %>%
+
+### clean country names 
+
+clean_country_name <- function(x) {
+  dplyr::case_when(
+    x %in% c("US", "United States") ~ "United States of America",
+    x %in% c("MX")                  ~ "Mexico",
+    x %in% c("Republic of Moldova", "Moldova") ~ "Moldova",
+    TRUE ~ x
+  )
+}
+
+Data_diff <- Data_complete %>%
   mutate(
-    host_country_or_area = case_when(
-      host_country_or_area %in% c("US", "United States") ~ "United States of America",
-      host_country_or_area %in% c("MX", "Mexico")        ~ "Mexico",
-      host_country_or_area %in% c("Republic of Moldova", "Moldova") ~ "Moldova",
-      TRUE ~ host_country_or_area
-    )
+    host_country_clean  = clean_country_name(host_country_or_area),
+    buyer_country_clean = clean_country_name(proponent_country_manual),
+    
+    host_iso3 = countrycode(host_country_clean, "country.name", "iso3c"),
+    buyer_iso3 = countrycode(buyer_country_clean, "country.name", "iso3c")
   ) %>%
-  group_by(host_country_or_area) %>%
+  filter(
+    !is.na(host_iso3),
+    !is.na(buyer_iso3),
+    host_iso3 != buyer_iso3
+  )
+
+
+
+# Step 1 — rebuild host_carbon_totals from Data_diff (not Data_complete)
+
+host_carbon_totals <- Data_diff %>%
+  mutate(
+    host_country_clean = clean_country_name(host_country_or_area)
+  ) %>%
+  group_by(host_country_clean) %>%
   summarise(
     total_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(
     iso3c = countrycode(
-      host_country_or_area,
+      host_country_clean,
       origin = "country.name",
       destination = "iso3c"
     ),
     iso3c = case_when(
-      iso3c == "COD" ~ "ZAR",  # DR Congo
-      iso3c == "ROU" ~ "ROM",  # Romania
+      iso3c == "COD" ~ "ZAR",
+      iso3c == "ROU" ~ "ROM",
       TRUE ~ iso3c
     )
   )
 
 
+
+
+# ISO check
+
 host_carbon_totals %>%
   count(iso3c, sort = TRUE) %>%
   filter(n > 1)
+
+host_carbon_totals %>%
+  count(iso3c, sort = TRUE) %>%
+  filter(n > 1) %>%
+  nrow()
+
+# Are ISO3 codes unique?
+any(duplicated(host_carbon_totals$iso3c))
+
+
+### “We restricted analyses to international carbon projects, defined as projects where the buyer country differed from the host country, based on ISO-3 country codes after harmonising country name variants.” ###
 
 
 
@@ -555,7 +597,7 @@ gov_host_plot_faceted_gdp <- ggplot(
     name = "Continent",
     values = continent_colors
   ) +
-
+  
   scale_size_continuous(
     name = "GDP per capita (USD, 2024)",
     range = c(1.5, 6),
@@ -580,3 +622,81 @@ gov_host_plot_faceted_gdp <- ggplot(
   )
 
 print(gov_host_plot_faceted_gdp)
+
+
+
+
+
+#### Untransformed carbon volume ####
+
+gov_host_plot_faceted_gdp <- ggplot(
+  host_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024),
+      !is.na(project_continent)
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024,
+    colour = project_continent
+  )
+) +
+  geom_point(alpha = 0.7) +
+  
+  geom_text_repel(
+    data = label_countries_facets,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = countryname
+    ),
+    size = 2.8,
+    colour = "black",
+    box.padding = 0.4,
+    point.padding = 0.3,
+    segment.color = "grey60",
+    max.overlaps = Inf
+  ) +
+  
+  ## UNLOGGED X AXIS
+  scale_x_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  
+  scale_colour_manual(
+    name = "Continent",
+    values = continent_colors
+  ) +
+  
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    range = c(1.5, 6),
+    labels = scales::label_dollar(accuracy = 1)
+  ) +
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  
+  labs(
+    x = "Total forest-based carbon credit volume",
+    y = "Governance score (WGI)",
+    colour = "Continent",
+    title = "Forest-based carbon project volume vs governance",
+    subtitle = "Point colour = continent; point size = GDP per capita (2024)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right"
+  )
+
+print(gov_host_plot_faceted_gdp)
+

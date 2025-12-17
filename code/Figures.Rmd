@@ -229,37 +229,77 @@ library(readxl)
 library(scales)
 library(ggrepel)
 
-  host_carbon_totals <- Data_complete %>%
+
+### clean country names 
+
+clean_country_name <- function(x) {
+  dplyr::case_when(
+    x %in% c("US", "United States") ~ "United States of America",
+    x %in% c("MX")                  ~ "Mexico",
+    x %in% c("Republic of Moldova", "Moldova") ~ "Moldova",
+    TRUE ~ x
+  )
+}
+
+Data_diff <- Data_complete %>%
   mutate(
-    host_country_or_area = case_when(
-      host_country_or_area %in% c("US", "United States") ~ "United States of America",
-      host_country_or_area %in% c("MX", "Mexico")        ~ "Mexico",
-      host_country_or_area %in% c("Republic of Moldova", "Moldova") ~ "Moldova",
-      TRUE ~ host_country_or_area
-    )
+    host_country_clean  = clean_country_name(host_country_or_area),
+    buyer_country_clean = clean_country_name(proponent_country_manual),
+
+    host_iso3 = countrycode(host_country_clean, "country.name", "iso3c"),
+    buyer_iso3 = countrycode(buyer_country_clean, "country.name", "iso3c")
   ) %>%
-  group_by(host_country_or_area) %>%
+  filter(
+    !is.na(host_iso3),
+    !is.na(buyer_iso3),
+    host_iso3 != buyer_iso3
+  )
+
+
+
+# Step 1 — rebuild host_carbon_totals from Data_diff (not Data_complete)
+
+host_carbon_totals <- Data_diff %>%
+  mutate(
+    host_country_clean = clean_country_name(host_country_or_area)
+  ) %>%
+  group_by(host_country_clean) %>%
   summarise(
     total_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(
     iso3c = countrycode(
-      host_country_or_area,
+      host_country_clean,
       origin = "country.name",
       destination = "iso3c"
     ),
     iso3c = case_when(
-      iso3c == "COD" ~ "ZAR",  # DR Congo
-      iso3c == "ROU" ~ "ROM",  # Romania
+      iso3c == "COD" ~ "ZAR",
+      iso3c == "ROU" ~ "ROM",
       TRUE ~ iso3c
     )
   )
 
 
+
+
+# ISO check
+
 host_carbon_totals %>%
   count(iso3c, sort = TRUE) %>%
   filter(n > 1)
+
+host_carbon_totals %>%
+  count(iso3c, sort = TRUE) %>%
+  filter(n > 1) %>%
+  nrow()
+
+# Are ISO3 codes unique?
+any(duplicated(host_carbon_totals$iso3c))
+
+
+### “We restricted analyses to international carbon projects, defined as projects where the buyer country differed from the host country, based on ISO-3 country codes after harmonising country name variants.” ###
 
 
 
