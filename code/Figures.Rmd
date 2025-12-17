@@ -21,6 +21,8 @@ library(ggalluvial)
 library(readxl)
 library(countrycode)
 library(ggrepel)
+library(dplyr)
+library(countrycode)
 
 
 ```
@@ -208,7 +210,228 @@ doc <- read_docx() %>%
 print(doc, target = "forest_methods_by_registry_deduplicated.docx")
 ```
 
+```{r}
+##### Cleaning ccbp_market_data_forest_based.RDATA to fix continents, ISO3 codes, and clearing up mistaken spellings of countries
 
+# Step 1 — Define a country-name cleaning helper (reuse everywhere)
+
+clean_country_name <- function(x) {
+  dplyr::case_when(
+    x %in% c("US", "United States") ~ "United States of America",
+    x %in% c("MX")                  ~ "Mexico",
+    x %in% c("Republic of Moldova", "Moldova") ~ "Moldova",
+    TRUE ~ x
+  )
+}
+
+# Step 2 — Clean country names and assign ISO3 codes
+
+Data_complete_iso <- Data_complete %>%
+  mutate(
+    ## Clean names first
+    host_country_clean      = clean_country_name(host_country_or_area),
+    proponent_country_clean = clean_country_name(proponent_country_manual),
+
+    ## ISO3 codes
+    ISO3_host = countrycode(
+      host_country_clean,
+      origin = "country.name",
+      destination = "iso3c"
+    ),
+    ISO3_proponent = countrycode(
+      proponent_country_clean,
+      origin = "country.name",
+      destination = "iso3c"
+    ),
+
+    ## Handle known legacy mismatches (important)
+    ISO3_host = case_when(
+      ISO3_host == "COD" ~ "ZAR",  # DR Congo (Zaire in WGI / legacy data)
+      ISO3_host == "ROU" ~ "ROM",  # Romania legacy
+      TRUE ~ ISO3_host
+    ),
+    ISO3_proponent = case_when(
+      ISO3_proponent == "COD" ~ "ZAR",
+      ISO3_proponent == "ROU" ~ "ROM",
+      TRUE ~ ISO3_proponent
+    )
+  )
+
+# Step 3 — Assign continents from ISO3 codes #
+
+Data_complete_iso <- Data_complete %>%
+  mutate(
+    ## Clean country names
+    host_country_clean      = clean_country_name(host_country_or_area),
+    proponent_country_clean = clean_country_name(proponent_country_manual),
+
+    ## Modern ISO3 (for geography)
+    ISO3_host_modern = countrycode(
+      host_country_clean,
+      origin = "country.name",
+      destination = "iso3c"
+    ),
+    ISO3_proponent_modern = countrycode(
+      proponent_country_clean,
+      origin = "country.name",
+      destination = "iso3c"
+    ),
+
+    ## Legacy ISO3 (ONLY for WGI / legacy datasets)
+    ISO3_host = case_when(
+      ISO3_host_modern == "COD" ~ "ZAR",
+      ISO3_host_modern == "ROU" ~ "ROM",
+      TRUE ~ ISO3_host_modern
+    ),
+    ISO3_proponent = case_when(
+      ISO3_proponent_modern == "COD" ~ "ZAR",
+      ISO3_proponent_modern == "ROU" ~ "ROM",
+      TRUE ~ ISO3_proponent_modern
+    )
+  )
+
+##### add-on to reassign continents ######
+#### Step 1 Define country groups by ISO3 ####
+
+north_america_iso3 <- c(
+  "USA",  # United States
+  "CAN"   # Canada
+)
+
+central_america_iso3 <- c(
+  "MEX",  # Mexico
+  "GTM",  # Guatemala
+  "BLZ",  # Belize
+  "HND",  # Honduras
+  "SLV",  # El Salvador
+  "NIC",  # Nicaragua
+  "CRI",  # Costa Rica
+  "PAN"   # Panama
+)
+
+south_america_iso3 <- c(
+  "ARG", "BOL", "BRA", "CHL", "COL", "ECU",
+  "GUY", "PRY", "PER", "SUR", "URY", "VEN"
+)
+
+### Step 2 — Recode continents using modern ISO3 ####
+Data_complete_iso <- Data_complete_iso %>%
+  mutate(
+    host_continent_iso = case_when(
+      ISO3_host_modern %in% north_america_iso3   ~ "North America",
+      ISO3_host_modern %in% central_america_iso3 ~ "Central America",
+      ISO3_host_modern %in% south_america_iso3   ~ "South America",
+      TRUE                                       ~ "Americas"
+    ),
+    
+    proponent_continent_iso = case_when(
+      ISO3_proponent_modern %in% north_america_iso3   ~ "North America",
+      ISO3_proponent_modern %in% central_america_iso3 ~ "Central America",
+      ISO3_proponent_modern %in% south_america_iso3   ~ "South America",
+      TRUE                                            ~ "Americas"
+    )
+  )
+
+
+
+
+# Step 4 - assign continents using modern ISO only
+
+Data_complete_iso <- Data_complete_iso %>%
+  mutate(
+    host_continent_iso = countrycode(
+      ISO3_host_modern,
+      origin = "iso3c",
+      destination = "continent"
+    ),
+    proponent_continent_iso = countrycode(
+      ISO3_proponent_modern,
+      origin = "iso3c",
+      destination = "continent"
+    )
+  )
+
+
+## check for continents
+
+# No missing continents?
+Data_complete_iso %>%
+  summarise(
+    missing_host_cont = sum(is.na(host_continent_iso)),
+    missing_prop_cont = sum(is.na(proponent_continent_iso))
+  )
+
+# Which countries were legacy?
+Data_complete_iso %>%
+  filter(ISO3_host != ISO3_host_modern) %>%
+  distinct(host_country_clean, ISO3_host_modern, ISO3_host)
+
+
+
+# check for missing ISO codes
+
+Data_complete_iso %>%
+  summarise(
+    missing_host_iso_modern = sum(is.na(ISO3_host_modern)),
+    missing_prop_iso_modern = sum(is.na(ISO3_proponent_modern)),
+    missing_host_iso_legacy = sum(is.na(ISO3_host)),
+    missing_prop_iso_legacy = sum(is.na(ISO3_proponent))
+  )
+
+
+# check any rows failed to assign ISO
+
+Data_complete_iso %>%
+  filter(is.na(ISO3_host_modern) | is.na(ISO3_proponent_modern)) %>%
+  distinct(
+    host_country_or_area,
+    proponent_country_manual,
+    host_country_clean,
+    proponent_country_clean
+  )
+
+## check where legacy ISO is used
+
+Data_complete_iso %>%
+  filter(ISO3_host != ISO3_host_modern) %>%
+  distinct(host_country_clean, ISO3_host_modern, ISO3_host)
+
+
+# check continent assign completeness
+
+Data_complete_iso %>%
+  summarise(
+    missing_host_continent = sum(is.na(host_continent_iso)),
+    missing_prop_continent = sum(is.na(proponent_continent_iso))
+  )
+
+# check continent values
+
+unique(Data_complete_iso$host_continent_iso)
+unique(Data_complete_iso$proponent_continent_iso)
+
+
+# check for ISO collision
+
+Data_complete_iso %>%
+  distinct(ISO3_host_modern, host_country_clean) %>%
+  count(ISO3_host_modern) %>%
+  filter(n > 1)
+
+
+## summary table
+
+Data_complete_iso %>%
+  summarise(
+    n_rows = n(),
+    n_unique_hosts = n_distinct(ISO3_host_modern),
+    n_unique_proponents = n_distinct(ISO3_proponent_modern)
+  )
+
+
+
+
+```
 
 ```{r}
 #### Making governance plots for project host countries ####
