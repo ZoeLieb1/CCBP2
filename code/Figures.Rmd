@@ -1058,8 +1058,158 @@ print(gov_proponent_plot_faceted_gdp_linear)
 
 
 
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
 
 
+
+
+####### Plotting governance metrics comparing host and proponents ########
+
+##### HOST AND PROPONENT PLOT - with RQ gov metric only ####
+
+#### Step 1 - prepare RQ for hosts and props ####
+
+host_rq <- host_carbon_wgi_long %>%
+filter(
+  indicator == "rq",
+  total_credit_volume > 0,
+  !is.na(estimate)
+) %>%
+  mutate(role = "Host")
+
+proponent_rq <- proponent_carbon_wgi_long %>%
+  filter(
+    indicator == "rq",
+    total_credit_volume > 0,
+    !is.na(estimate)
+  ) %>%
+  mutate(role = "Proponent")
+
+
+#### Step 2 - combine into dataframe #####
+
+rq_combined <- bind_rows(host_rq, proponent_rq)
+
+#check
+table(rq_combined$role)
+
+#### Step 3 - plot ####
+
+rq_overlay_plot <- ggplot(
+  rq_combined,
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    colour = role
+  )
+) +
+  geom_point(
+    alpha = 0.6,
+    size = 2
+  ) +
+  
+  scale_colour_manual(
+    values = c(
+      "Host" = "#8ECae6",      # light blue
+      "Proponent" = "#CDB4DB"  # light purple
+    ),
+    name = "Country role"
+  ) +
+  
+  scale_x_log10(
+    labels = label_number(
+      scale_cut = cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+  
+  labs(
+    x = "Total forest-based carbon credit volume (log scale)",
+    y = "Regulatory Quality (WGI)",
+    title = "Regulatory quality vs forest-based carbon credit volume",
+    subtitle = "Host countries (blue) vs proponent countries (purple)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold")
+  )
+
+print(rq_overlay_plot)
+
+#### UNLOGGED #####
+
+rq_overlay_plot_linear <- ggplot(
+  rq_combined,
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    colour = role
+  )
+) +
+  geom_point(
+    alpha = 0.6,
+    size = 2
+  ) +
+  
+  scale_colour_manual(
+    values = c(
+      "Host" = "#17bebb",      # light blue
+      "Proponent" = "#cd5334"  # light purple
+    ),
+    name = "Country role"
+  ) +
+  
+  scale_x_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+  
+  labs(
+    x = "Total forest-based carbon credit volume",
+    y = "Regulatory Quality (WGI)",
+    title = "Regulatory quality vs forest-based carbon credit volume",
+    subtitle = "Host countries (blue) vs proponent countries (purple); linear scale"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold")
+  )
+
+print(rq_overlay_plot_linear)
 
 
 
