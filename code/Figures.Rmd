@@ -38,8 +38,60 @@ Data <- combined_data_expanded
 
 head(Data)
 
+#### DATA SUMMARY FOR METHODS SECTION ####
+#### summarising dataset before filtering for only forest-based projects ####
+
+# reducing dataframe to only necessary rows
+
+
+Data_subset <- Data %>%
+  select(
+    proponent,
+    transaction_date_day,
+    buyer_sector,
+    proponent_country_manual,
+    buyer_continent,
+    buyer_region,
+    sum_of_credit_volume,
+    est_price_at_retirement_date,
+    transaction_type,
+    vintage_year,
+    registry,
+    project_developer,
+    project_name,
+    id,
+    project_methodologies,
+    host_country_or_area,
+    project_region,
+    project_continent,
+    source,
+    status,
+    host_region,
+    project_registration_date,
+    crediting_period_start_date,
+    crediting_period_end_date,
+    duration_of_project,
+    parsed_start_date,
+    parsed_end_date,
+    start_year,
+    end_year,
+    capped_end_year,
+    credited_years
+  )
+
+range(Data_subset$vintage_year, na.rm = TRUE)
+
+range(Data_subset$transaction_date_day, na.rm = TRUE)
+
+## how many different registries
+
+unique(Data_subset$registry)
+
+
 # Define keywords that indicate forest-based carbon projects
 forest_keywords <- c("REDD", "redd", "Forest", "forest", "FOREST", "Reforestation", "REFORESTATION", "reforestation", "Afforestation", "afforestation", "AFFORESTATION", "Deforestation", "deforestation", "DEFORESTATION", "Ecosystem Conversion", "ecosystem conversion", "ECOSYSTEM CONVERSION", "Peat Swamp", "peat swamp", "PEAT SWAMP", "Forestry", "forestry", "FORESTRY", "tree", "Tree", "trees", "TREES", "TREE", "forestation", "Forestation", "FORESTATION", "planting", "Planting", "PLANTATION", "mangrove", "Mangrove", "MANGROVE", "swamp-forest", "swamp forest", "SWAMP FOREST", "Swamp Forest", "Swamp forest", "wood", "Wood", "WOOD", "regeneration", "Regeneration", "REGENERATION", "regrowth", "Regrowth", "REGROWTH", "vegetation", "VEGETATION", "Vegetation", "seedling", "Seedling", "SEEDLING", "sapling", "Sapling", "SAPLING", "bosque", "Bosque", "BOSQUE", "forestal", "Forestal", "FORESTAL", "plantaciones forestales", "PLANTACIONES FORESTALES", "arbol", "Arbol", "ARBOL", "Agro-forestry", "agro-forestry", "AGRO-FORESTRY", "agroforestry", "Agroforestry", "AGROFORESTRY", "Plantation", "plantation", "PLANTATION", "woodland", "Woodland", "WOODLAND")
+
+
 
 
 #### NOTE TO BROOKE -- I changed the column name to match the new dataset column name for methodologies #####

@@ -743,7 +743,6 @@ combined_data_expanded <- combined_data_expanded %>%
     )
   )
 
-
 # checking what came out for continent with ZEL_search
 
 combined_data_expanded %>%
