@@ -111,10 +111,41 @@ forest_projects_df <- Data %>%
     str_detect(project_description, regex(paste(forest_keywords, collapse = "|"), ignore_case = TRUE))
   )
 
+# find year ranges
+range(forest_projects_df$vintage_year, na.rm = TRUE)
+range(forest_projects_df$transaction_date_day, na.rm = TRUE)
+
+# deciding which column to use for year-span count
+
+forest_projects_df %>%
+  summarise(
+    n_rows = n(),
+
+    # Crediting period start
+    n_na_crediting_start = sum(is.na(crediting_period_start_date)),
+    prop_na_crediting_start = mean(is.na(crediting_period_start_date)),
+
+    # Crediting period end
+    n_na_crediting_end = sum(is.na(crediting_period_end_date)),
+    prop_na_crediting_end = mean(is.na(crediting_period_end_date)),
+
+    # Vintage year
+    n_na_vintage_year = sum(is.na(vintage_year)),
+    prop_na_vintage_year = mean(is.na(vintage_year))
+  )
+
+
+## how many different registries
+unique(forest_projects_df$registry)
+
+
+
 forest_projects_by_registry <- forest_projects_df %>%
   count(registry, sort = TRUE)
 
 forest_projects_by_registry
+
+
 
 ## seems to work! All of the registries I expected to see are here.
 
