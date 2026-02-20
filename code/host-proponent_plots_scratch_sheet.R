@@ -360,6 +360,25 @@ save_plot_png(project_level_cc_plot_hostcolor, "project_level_host_vs_proponent_
 
 
 
+### checking number of rows plotting by ggplot ####
+
+built <- ggplot_build(project_level_cc_plot)
+n_points_drawn <- nrow(built$data[[1]])
+n_points_drawn
+
+## how many overlapping coords? ##
+
+project_cc %>%
+  count(host_cc, proponent_cc, name = "n_projects") %>%
+  arrange(desc(n_projects)) %>%
+  slice(1:20)
+
+n_total  <- nrow(project_cc)
+n_unique <- project_cc %>% distinct(host_cc, proponent_cc) %>% nrow()
+c(total_rows = n_total, unique_xy = n_unique)
+
+
+
 #### Adding all WGI metrics ####
 
 #### ============================================================
@@ -508,12 +527,258 @@ for (m in metrics) {
     size_range = c(0.6, 7.5)
   )
   
+  # check???
+  # after project_m is created, and after p_project is defined:
+  built <- ggplot_build(p_project)
+  n_points_drawn <- nrow(built$data[[1]])
+  
+  overlap_top <- project_m %>%
+    count(host_metric, proponent_metric, name = "n_projects") %>%
+    arrange(desc(n_projects)) %>%
+    slice(1:10)
+  
+  n_total  <- nrow(project_m)
+  n_unique <- project_m %>% distinct(host_metric, proponent_metric) %>% nrow()
+  
+  message("Metric = ", m,
+          " | points_drawn = ", n_points_drawn,
+          " | total_rows = ", n_total,
+          " | unique_xy = ", n_unique)
+  
+  print(overlap_top)
+  
   print(p_project)
   save_plot_png(p_project, paste0("project_host_vs_proponent_", m, "_hostcolor"))
 }
 
 
+###############
+#### Network diagram of hosts-proponents ####
+###############
+library(dplyr)
+library(tidyr)
+library(stringr)
+install.packages("igraph")
+library(igraph)
+install.packages("ggraph")
+library(ggraph)
+library(ggplot2)
+library(scales)
+
+continent_pal <- c(
+    "Africa" = "#C99D9B", 
+    "Europe" = "#1CFEBA",  
+    "Asia" = "#16ACCA",  
+    "North America" = "#C62E65",  
+    "Central America & Caribbean" = "#9D8DF1",  
+    "South America" = "#694264",  
+    "Oceania" = "#F4AC45")
 
 
+#### edge list ####
+edges <- Data_complete_iso %>%
+  filter(
+    !is.na(host_country_clean),
+    !is.na(proponent_country_clean),
+    !is.na(sum_of_credit_volume)
+  ) %>%
+  group_by(host_country_clean, proponent_country_clean) %>%
+  summarise(
+    credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rename(
+    from = host_country_clean,
+    to   = proponent_country_clean
+  )
+
+
+#### nodes list ####
+
+nodes_host <- Data_complete_iso %>%
+  distinct(country = host_country_clean, continent = host_continent_iso) %>%
+  filter(!is.na(country))
+
+nodes_prop <- Data_complete_iso %>%
+  distinct(country = proponent_country_clean, continent = proponent_continent_iso) %>%
+  filter(!is.na(country))
+
+nodes <- bind_rows(nodes_host, nodes_prop) %>%
+  group_by(country) %>%
+  summarise(
+    continent = continent[which(!is.na(continent))[1]],
+    .groups = "drop"
+  ) %>%
+  mutate(
+    continent = if_else(is.na(continent), "Unknown", continent)
+  )
+
+# keep top nodes only ####
+
+top_n_edges <- 50  # tune this
+edges_plot <- edges %>% slice_max(credit_volume, n = top_n_edges)
+
+
+#### plot #####
+
+g <- graph_from_data_frame(
+  d = edges_plot,
+  vertices = nodes %>% rename(name = country),
+  directed = TRUE
+)
+
+# node sizes: total volume in+out
+node_strength <- strength(g, vids = V(g), weights = E(g)$credit_volume)
+V(g)$node_size <- rescale(node_strength, to = c(2, 12))
+
+# edge widths: credit volume
+E(g)$edge_width <- rescale(E(g)$credit_volume, to = c(0.2, 3.5))
+
+# ensure palette covers all continents present
+missing_cols <- setdiff(unique(V(g)$continent), names(continent_pal))
+if (length(missing_cols) > 0) {
+  message("Missing colours for: ", paste(missing_cols, collapse = ", "))
+}
+
+set.seed(1)
+
+p_net <- ggraph(g, layout = "fr") +  # try "kk" as alternative
+  geom_edge_fan(aes(width = edge_width),
+                alpha = 0.25,
+                arrow = arrow(length = unit(2.5, "mm"), type = "closed"),
+                end_cap = circle(2.5, "mm")) +
+  geom_node_point(aes(size = node_size, colour = continent), alpha = 0.95) +
+  scale_colour_manual(values = continent_pal, na.value = "grey70") +
+  scale_size_identity() +
+  scale_edge_width_identity() +
+  guides(edge_width = "none", size = "none") +
+  theme_void(base_size = 12) +
+  theme(
+    legend.position = "right",
+    legend.title = element_blank()
+  )
+
+p_net
+
+
+#### two column flow layout ####
+
+# edges_plot already exists from earlier code
+g <- graph_from_data_frame(
+  d = edges_plot,
+  vertices = nodes %>% rename(name = country),
+  directed = TRUE
+)
+
+# Identify which nodes appear as host and/or proponent
+hosts <- unique(edges_plot$from)
+props <- unique(edges_plot$to)
+
+V(g)$is_host <- V(g)$name %in% hosts
+V(g)$is_prop <- V(g)$name %in% props
+
+# If some countries appear on BOTH sides, bipartite layout breaks conceptually.
+# Option A (recommended): keep only strictly-bipartite nodes for this plot.
+g_bi <- induced_subgraph(g, vids = V(g)[xor(is_host, is_prop)])
+
+# Now define the required bipartite 'type' attribute:
+# convention: type == TRUE for the "top" partition (I'll use proponents)
+V(g_bi)$type <- V(g_bi)$is_prop
+
+# (optional) sizes/weights again, using this subgraph’s edges
+node_strength <- strength(g_bi, vids = V(g_bi), weights = E(g_bi)$credit_volume)
+V(g_bi)$node_size <- scales::rescale(node_strength, to = c(2, 12))
+E(g_bi)$edge_width <- scales::rescale(E(g_bi)$credit_volume, to = c(0.2, 3.5))
+
+p_bipartite <- ggraph(g_bi, layout = "bipartite") +
+  geom_edge_fan(aes(width = edge_width), alpha = 0.25) +
+  geom_node_point(aes(colour = continent, size = node_size), alpha = 0.95) +
+  scale_colour_manual(values = continent_pal, na.value = "grey70") +
+  scale_size_identity() +
+  scale_edge_width_identity() +
+  theme_void(base_size = 12) +
+  theme(legend.position = "right", legend.title = element_blank())
+
+p_bipartite
+
+
+#### the way above eliminates hosts that are also proponents. Will try this way....####
+
+# classify nodes (host / proponent / both)
+V(g)$group <- dplyr::case_when(
+  V(g)$name %in% hosts & V(g)$name %in% props ~ "Both",
+  V(g)$name %in% hosts ~ "Host",
+  V(g)$name %in% props ~ "Proponent",
+  TRUE ~ "Other"
+)
+
+# Make a manual layout with x positions
+set.seed(1)
+lay <- create_layout(g, layout = "fr")  # just for y spread
+
+lay$x <- dplyr::case_when(
+  lay$name %in% hosts & !(lay$name %in% props) ~ 0,
+  lay$name %in% props & !(lay$name %in% hosts) ~ 1,
+  lay$name %in% hosts &  (lay$name %in% props) ~ 0.5,
+  TRUE ~ 0.5
+)
+
+# EDGE widths
+E(g_bi)$edge_width <- scales::rescale(
+  E(g_bi)$credit_volume,
+  to = c(0.2, 3.5)
+)
+
+# NODE sizes
+V(g_bi)$node_size <- scales::rescale(
+  strength(g_bi, weights = E(g_bi)$credit_volume),
+  to = c(2, 12)
+)
+
+
+p_two_col <- ggraph(g_bi, layout = "bipartite") +
+  geom_edge_fan(aes(width = edge_width), alpha = 0.25) +
+  geom_node_point(aes(size = node_size, colour = continent), alpha = 0.95) +
+  scale_edge_width_identity() +
+  scale_size_identity() +
+  scale_colour_manual(values = continent_pal, na.value = "grey70") +
+  theme_void()
+
+
+p_two_col
+
+
+
+# 1. Compute attributes on the graph
+E(g)$edge_width <- scales::rescale(
+  E(g)$credit_volume,
+  to = c(0.2, 3.5)
+)
+
+V(g)$node_size <- scales::rescale(
+  strength(g, weights = E(g)$credit_volume),
+  to = c(2, 12)
+)
+
+# 2. THEN create the layout
+lay <- create_layout(g, layout = "fr")
+
+# 3. Override x positions
+lay$x <- dplyr::case_when(
+  lay$name %in% hosts & !(lay$name %in% props) ~ 0,
+  lay$name %in% props & !(lay$name %in% hosts) ~ 1,
+  lay$name %in% hosts &  (lay$name %in% props) ~ 0.5,
+  TRUE ~ 0.5
+)
+
+
+ggraph(lay) +
+  geom_edge_fan(aes(width = edge_width), alpha = 0.25,
+                arrow = arrow(length = unit(2.5, "mm"), type = "closed")) +
+  geom_node_point(aes(size = node_size, colour = continent), alpha = 0.95) +
+  scale_edge_width_identity() +
+  scale_size_identity() +
+  scale_colour_manual(values = continent_pal, na.value = "grey70") +
+  theme_void()
 
 
