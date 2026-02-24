@@ -773,6 +773,8 @@ host_govmetrics_logged <- build_faceted_plot(
   logged = TRUE
 )
 
+
+host_govmetrics_unlogged <- build_faceted_plot(
   df_long = host_carbon_wgi_long,
   label_df = label_countries_facets_host,
   role_title = "host countries",
