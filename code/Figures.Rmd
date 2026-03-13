@@ -20,6 +20,7 @@ library(ggplot2)
 library(ggalluvial)
 library(readxl)
 library(countrycode)
+install.packages("ggrepel")
 library(ggrepel)
 library(dplyr)
 library(countrycode)
@@ -93,16 +94,7 @@ forest_keywords <- c("REDD", "redd", "Forest", "forest", "FOREST", "Reforestatio
 
 
 
-
-#### NOTE TO BROOKE -- I changed the column name to match the new dataset column name for methodologies #####
-
-# Identify forest-based projects -- only for methodologies - ZEL expanded to project_name and project_description in code below
-
-# forest_projects_df <- Data[grepl(paste(forest_keywords, collapse = "|"), 
-                           #    Data$project_methodologies, ignore.case = TRUE), ]
-
-
-### ZEL - Expand filter to include more than just methodologies column for keyword filter - added project_name and project_description
+#### Identify forest-based projects ####
 
 forest_projects_df <- Data %>%
   filter(
@@ -152,18 +144,6 @@ forest_projects_by_registry
 # Print the result
 print(forest_projects_df)
 
-#### HI BROOKE - also need to change some column headings here. I think Headquarter.Country you want to be the proponent country? As in, the country funding the project but not necessarily where the project happens. I'm going on this assumption but let's change if I have gotten this wrong.
-
-
-# Ensure Sum.of.Credit.Volume is numeric (cleaning empty or non-numeric entries)
-## Data_reduced <- forest_projects_df %>%
-#   select(
-#    Headquarter.Country,
-#    Buyer.Continent,
-#    Credit.Volume = `Sum.of.Credit.Volume`,
-  #  Project.Country,
-   # Project.Continent
-#  )
 
 
 Data_reduced <- forest_projects_df %>%
@@ -178,17 +158,6 @@ Data_reduced <- forest_projects_df %>%
     source
   )
 
-
-# Filter for complete cases (no NA or empty strings)
-# Data_complete <- Data_reduced %>%
-#  filter(
-#    complete.cases(.) &                     # Remove NA values
-#    Credit.Volume != "" &                   # Remove empty strings
-#    Headquarter.Country != "" &
-#    Buyer.Continent != "" &
-#    Project.Country != "" &
-#    Project.Continent != ""
-#  )
 
 # Filter for complete cases (no NA or empty strings)
 Data_complete <- Data_reduced %>%
@@ -294,7 +263,7 @@ print(doc, target = "forest_methods_by_registry_deduplicated.docx")
 ```
 
 ```{r}
-##### Cleaning ccbp_market_data_forest_based.RDATA to fix continents, ISO3 codes, and clearing up mistaken spellings of countries
+##### Cleaning ccbp_market_data_forest_based.RDATA to fix continents, ISO3 codes, and clearing up mistaken or variable spellings of countries
 
 ##### add-on to reassign continents ######
 #### Step 0 Define country groups by ISO3 ####
@@ -333,7 +302,6 @@ central_america_iso3 <- c(
 )
 
 # Sanity check of country sort
-
 
 
 
