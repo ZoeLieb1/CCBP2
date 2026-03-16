@@ -1,0 +1,2189 @@
+---
+title: "Data cleaning and figures"
+output: html_document
+date: "2025-05-15"
+---
+
+Project set up
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Set working directory
+setwd("/Users/zoe/Desktop/CCBP/CCBP_database")
+
+# Load required libraries and install packages if necessary
+install.packages("ggalluvial")
+install.packages("ggrepel")
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(ggalluvial)
+library(readxl)
+library(countrycode)
+install.packages("ggrepel")
+library(ggrepel)
+library(dplyr)
+library(countrycode)
+
+
+```
+
+Set up dataframe
+```{r}
+#Read in csv
+# Data <- read.csv("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Data from NTU (Singapore)/Carbon_Market_Data_20250408.csv")
+
+# reading in new updated and combined dataset
+load("Combined_Carbon_Market_Data_Expanded.RDATA")
+Data <- combined_data_expanded
+
+head(Data)
+
+#### DATA SUMMARY FOR METHODS SECTION ####
+#### summarising dataset before filtering for only forest-based projects ####
+
+# reducing dataframe to only necessary rows
+
+
+Data_subset <- Data %>%
+  select(
+    proponent,
+    transaction_date_day,
+    buyer_sector,
+    proponent_country_manual,
+    buyer_continent,
+    buyer_region,
+    sum_of_credit_volume,
+    est_price_at_retirement_date,
+    transaction_type,
+    vintage_year,
+    registry,
+    project_developer,
+    project_name,
+    id,
+    project_methodologies,
+    host_country_or_area,
+    project_region,
+    project_continent,
+    source,
+    status,
+    host_region,
+    project_registration_date,
+    crediting_period_start_date,
+    crediting_period_end_date,
+    duration_of_project,
+    parsed_start_date,
+    parsed_end_date,
+    start_year,
+    end_year,
+    capped_end_year,
+    credited_years
+  )
+
+range(Data_subset$vintage_year, na.rm = TRUE)
+
+range(Data_subset$transaction_date_day, na.rm = TRUE)
+
+## how many different registries
+
+unique(Data_subset$registry)
+
+
+# Define keywords that indicate forest-based carbon projects
+forest_keywords <- c("REDD", "redd", "Forest", "forest", "FOREST", "Reforestation", "REFORESTATION", "reforestation", "Afforestation", "afforestation", "AFFORESTATION", "Deforestation", "deforestation", "DEFORESTATION", "Ecosystem Conversion", "ecosystem conversion", "ECOSYSTEM CONVERSION", "Peat Swamp", "peat swamp", "PEAT SWAMP", "Forestry", "forestry", "FORESTRY", "tree", "Tree", "trees", "TREES", "TREE", "forestation", "Forestation", "FORESTATION", "planting", "Planting", "PLANTATION", "mangrove", "Mangrove", "MANGROVE", "swamp-forest", "swamp forest", "SWAMP FOREST", "Swamp Forest", "Swamp forest", "wood", "Wood", "WOOD", "regeneration", "Regeneration", "REGENERATION", "regrowth", "Regrowth", "REGROWTH", "vegetation", "VEGETATION", "Vegetation", "seedling", "Seedling", "SEEDLING", "sapling", "Sapling", "SAPLING", "bosque", "Bosque", "BOSQUE", "forestal", "Forestal", "FORESTAL", "plantaciones forestales", "PLANTACIONES FORESTALES", "arbol", "Arbol", "ARBOL", "Agro-forestry", "agro-forestry", "AGRO-FORESTRY", "agroforestry", "Agroforestry", "AGROFORESTRY", "Plantation", "plantation", "PLANTATION", "woodland", "Woodland", "WOODLAND")
+
+
+
+#### Identify forest-based projects ####
+
+forest_projects_df <- Data %>%
+  filter(
+    str_detect(project_methodologies, regex(paste(forest_keywords, collapse = "|"), ignore_case = TRUE)) |
+    str_detect(project_name, regex(paste(forest_keywords, collapse = "|"), ignore_case = TRUE)) |
+    str_detect(project_description, regex(paste(forest_keywords, collapse = "|"), ignore_case = TRUE))
+  )
+
+# find new year ranges after subsetting
+
+range(forest_projects_df$vintage_year, na.rm = TRUE)
+range(forest_projects_df$transaction_date_day, na.rm = TRUE)
+
+# deciding which column to use for year-span count
+
+forest_projects_df %>%
+  summarise(
+    n_rows = n(),
+
+    # Crediting period start
+    n_na_crediting_start = sum(is.na(crediting_period_start_date)),
+    prop_na_crediting_start = mean(is.na(crediting_period_start_date)),
+
+    # Crediting period end
+    n_na_crediting_end = sum(is.na(crediting_period_end_date)),
+    prop_na_crediting_end = mean(is.na(crediting_period_end_date)),
+
+    # Vintage year
+    n_na_vintage_year = sum(is.na(vintage_year)),
+    prop_na_vintage_year = mean(is.na(vintage_year))
+  )
+
+
+## how many different registries
+unique(forest_projects_df$registry)
+
+
+
+forest_projects_by_registry <- forest_projects_df %>%
+  count(registry, sort = TRUE)
+
+forest_projects_by_registry
+
+
+
+## seems to work! All of the registries I expected to see are here.
+
+# Print the result
+print(forest_projects_df)
+
+
+
+Data_reduced <- forest_projects_df %>%
+  select(
+    proponent_country_manual,
+    buyer_continent,
+    sum_of_credit_volume,
+    host_country_or_area,
+    project_continent,
+    registry,
+    project_methodologies,
+    source
+  )
+
+
+# Filter for complete cases (no NA or empty strings)
+Data_complete <- Data_reduced %>%
+  filter(
+    complete.cases(.) &                     # Remove NA values
+    sum_of_credit_volume != "" &                   # Remove empty strings
+    proponent_country_manual != "" &
+    buyer_continent != "" &
+    host_country_or_area != "" &
+    project_continent != ""
+  )
+
+head(Data_complete)
+print(Data_complete)
+
+
+save(Data_complete, file = "ccbp_market_data_forest_based.RDATA")
+
+
+
+```
+
+
+```{r}
+##### summarising methodologies into a table #####
+
+method_summary <- Data_complete %>%
+  group_by(registry) %>%
+  summarise(
+    n_methods = n_distinct(project_methodologies),
+    methods   = paste(sort(unique(project_methodologies)), collapse = "; "),
+    .groups = "drop"
+  ) %>%
+  arrange(registry)
+
+method_summary
+
+# making a table
+
+install.packages("flextable")
+install.packages("officer")
+
+library(flextable)
+library(officer)
+
+# Build the flextable
+ft <- flextable(method_summary)
+
+# Autofit registry + count, but wrap methods column
+ft <- autofit(ft) %>%
+  width(j = 3, width = 4) %>%   # make the methods column 4 inches wide
+  set_table_properties(layout = "autofit") %>%
+  theme_vanilla() %>%
+  add_header_lines("Summary of unique forest project methodologies per registry") %>%
+  align(align = "left", part = "all")   # left-align wrapped text
+
+# Save to Word
+doc <- read_docx() %>%
+  body_add_flextable(ft) %>%
+  body_end_section_landscape()   # optional: makes it landscape if table is wide
+
+print(doc, target = "forest_methods_by_registry_try4.docx")
+
+###--------------------------------------------
+###--------------------------------------------
+
+##### Finding duplicates in methodologies #####
+
+# Load required packages
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(flextable)
+library(officer)
+
+method_summary_clean <- method_summary %>%
+  rowwise() %>%
+  mutate(
+    # split into a list of methods per registry
+    methods_vec = list(str_split(methods, ";\\s*")[[1]] %>% str_trim()),
+    # remove duplicates + sort
+    methods_unique = list(sort(unique(methods_vec))),
+    # recombine into string
+    methods = paste(methods_unique, collapse = "; "),
+    # count unique
+    n_methods = length(methods_unique)
+  ) %>%
+  ungroup() %>%
+  select(registry, n_methods, methods) %>%
+  arrange(registry)
+
+# --- make nicely wrapped table for Word ---
+ft <- flextable(method_summary_clean) %>%
+  autofit() %>%
+  width(j = 3, width = 4) %>%   # wrap 3rd column (methods)
+  set_table_properties(layout = "autofit") %>%
+  theme_vanilla() %>%
+  add_header_lines("Summary of unique forest project methodologies per registry (deduplicated)") %>%
+  align(align = "left", part = "all")
+
+ft
+# --- export to Word file ---
+doc <- read_docx() %>%
+  body_add_flextable(ft) %>%
+  body_end_section_landscape()   # optional: remove if you prefer portrait
+
+print(doc, target = "forest_methods_by_registry_deduplicated.docx")
+```
+
+```{r}
+##### Cleaning ccbp_market_data_forest_based.RDATA to fix continents, ISO3 codes, and clearing up mistaken or variable spellings of countries
+
+##### add-on to reassign continents ######
+#### Step 0 Define country groups by ISO3 ####
+
+library(dplyr)
+library(countrycode)
+
+##### Step 0 — Define country groups by ISO3 (modern) ####
+
+north_america_iso3 <- c("USA", "CAN")
+
+south_america_iso3 <- c(
+  "ARG", "BOL", "BRA", "CHL", "COL", "ECU",
+  "GUY", "PRY", "PER", "SUR", "URY", "VEN"
+)
+
+caribbean_iso3 <- c(
+  "ATG", # Antigua and Barbuda
+  "BHS", # Bahamas
+  "BRB", # Barbados
+  "CUB", # Cuba
+  "DMA", # Dominica
+  "DOM", # Dominican Republic
+  "GRD", # Grenada
+  "JAM", # Jamaica
+  "KNA", # Saint Kitts and Nevis
+  "LCA", # Saint Lucia
+  "VCT", # Saint Vincent and the Grenadines
+  "TTO",  # Trinidad and Tobago
+  "HTI"
+)
+
+central_america_iso3 <- c(
+  "MEX", "GTM", "BLZ", "HND", "SLV", "NIC", "CRI", "PAN", "HTI",
+  caribbean_iso3
+)
+
+# Sanity check of country sort
+
+
+##### Step 1 — Country-name cleaning helper ####
+
+clean_country_name <- function(x) {
+  case_when(
+    x %in% c("US", "United States") ~ "United States of America",
+    x %in% c("MX")                  ~ "Mexico",
+    x %in% c("Republic of Moldova", "Moldova") ~ "Moldova",
+    TRUE ~ x
+  )
+}
+
+##### Step 2 — Clean names + assign ISO3 (modern + legacy) ####
+
+Data_complete_iso <- Data_complete %>%
+  mutate(
+    host_country_clean      = clean_country_name(host_country_or_area),
+    proponent_country_clean = clean_country_name(proponent_country_manual),
+
+    # modern ISO3 (for geography)
+    ISO3_host_modern = countrycode(
+      host_country_clean, "country.name", "iso3c"
+    ),
+    ISO3_proponent_modern = countrycode(
+      proponent_country_clean, "country.name", "iso3c"
+    ),
+
+    # legacy ISO3 (ONLY for WGI / legacy joins)
+    ISO3_host = case_when(
+      ISO3_host_modern == "COD" ~ "ZAR",
+      ISO3_host_modern == "ROU" ~ "ROM",
+      TRUE ~ ISO3_host_modern
+    ),
+    ISO3_proponent = case_when(
+      ISO3_proponent_modern == "COD" ~ "ZAR",
+      ISO3_proponent_modern == "ROU" ~ "ROM",
+      TRUE ~ ISO3_proponent_modern
+    )
+  )
+
+##### Step 3 — Assign DEFAULT continents (do this ONCE) ####
+# This preserves Africa, Europe, Asia, Oceania, etc.
+
+Data_complete_iso <- Data_complete_iso %>%
+  mutate(
+    host_continent_iso = countrycode(
+      ISO3_host_modern, "iso3c", "continent"
+    ),
+    proponent_continent_iso = countrycode(
+      ISO3_proponent_modern, "iso3c", "continent"
+    )
+  )
+
+##### Step 4 — Override ONLY the Americas ####
+
+Data_complete_iso <- Data_complete_iso %>%
+  mutate(
+    host_continent_iso = case_when(
+      ISO3_host_modern %in% north_america_iso3   ~ "North America",
+      ISO3_host_modern %in% central_america_iso3 ~ "Central America & Caribbean",
+      ISO3_host_modern %in% south_america_iso3   ~ "South America",
+      TRUE ~ host_continent_iso
+    ),
+
+    proponent_continent_iso = case_when(
+      ISO3_proponent_modern %in% north_america_iso3   ~ "North America",
+      ISO3_proponent_modern %in% central_america_iso3 ~ "Central America & Caribbean",
+      ISO3_proponent_modern %in% south_america_iso3   ~ "South America",
+      TRUE ~ proponent_continent_iso
+    )
+  )
+
+
+
+# check
+Data_complete_iso %>%
+  count(host_continent_iso, sort = TRUE)
+
+## check for continents
+
+# No missing continents?
+Data_complete_iso %>%
+  summarise(
+    missing_host_cont = sum(is.na(host_continent_iso)),
+    missing_prop_cont = sum(is.na(proponent_continent_iso))
+  )
+
+# Which countries were legacy?
+Data_complete_iso %>%
+  filter(ISO3_host != ISO3_host_modern) %>%
+  distinct(host_country_clean, ISO3_host_modern, ISO3_host)
+
+
+# check for missing ISO codes
+
+Data_complete_iso %>%
+  summarise(
+    missing_host_iso_modern = sum(is.na(ISO3_host_modern)),
+    missing_prop_iso_modern = sum(is.na(ISO3_proponent_modern)),
+    missing_host_iso_legacy = sum(is.na(ISO3_host)),
+    missing_prop_iso_legacy = sum(is.na(ISO3_proponent))
+  )
+
+
+# check any rows failed to assign ISO
+
+Data_complete_iso %>%
+  filter(is.na(ISO3_host_modern) | is.na(ISO3_proponent_modern)) %>%
+  distinct(
+    host_country_or_area,
+    proponent_country_manual,
+    host_country_clean,
+    proponent_country_clean
+  )
+
+## check where legacy ISO is used
+
+Data_complete_iso %>%
+  filter(ISO3_host != ISO3_host_modern) %>%
+  distinct(host_country_clean, ISO3_host_modern, ISO3_host)
+
+
+# check continent assign completeness
+
+Data_complete_iso %>%
+  summarise(
+    missing_host_continent = sum(is.na(host_continent_iso)),
+    missing_prop_continent = sum(is.na(proponent_continent_iso))
+  )
+
+# check continent values
+
+unique(Data_complete_iso$host_continent_iso)
+unique(Data_complete_iso$proponent_continent_iso)
+
+
+# check for ISO collision
+
+Data_complete_iso %>%
+  distinct(ISO3_host_modern, host_country_clean) %>%
+  count(ISO3_host_modern) %>%
+  filter(n > 1)
+
+
+## summary table
+
+Data_complete_iso %>%
+  summarise(
+    n_rows = n(),
+    n_unique_hosts = n_distinct(ISO3_host_modern),
+    n_unique_proponents = n_distinct(ISO3_proponent_modern)
+  )
+
+save(
+  Data_complete_iso,
+  file = "ccbp_market_data_forest_based_iso.RDATA"
+)
+
+names(Data_complete_iso)
+
+```
+
+```{r}
+
+#### ============================================================ #####
+#### Preparing governance data, GDP, and selecting thresholds #####
+#### ============================================================ #####
+
+###### Packages #####
+library(tidyverse)
+library(countrycode)
+library(readxl)
+library(scales)
+library(ggrepel)
+library(readr)
+
+#### ---------------------------
+#### User paths ####
+#### ---------------------------
+wgi_path <- "/Users/zoe/Desktop/CCBP/CCBP_database/data/gov_indicators_wgi/wgidataset.xlsx"
+gdp_path <- "/Users/zoe/Desktop/CCBP/CCBP_database/data/GDP_world_data/gdp_world_data_country.csv"
+
+# Output folder (creates if missing)
+plot_dir <- "plots_governance"
+dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
+
+#### ---------------------------
+#### Assumptions / sanity checks ####
+#### ---------------------------
+stopifnot(exists("Data_complete_iso"))
+
+required_cols <- c(
+  "ISO3_host_modern", "ISO3_proponent_modern",
+  "host_continent_iso", "proponent_continent_iso",
+  "sum_of_credit_volume"
+)
+missing_cols <- setdiff(required_cols, names(Data_complete_iso))
+if (length(missing_cols) > 0) {
+  stop("Data_complete_iso is missing required columns: ", paste(missing_cols, collapse = ", "))
+}
+
+
+#### Common settings ####
+
+
+# WGI indicator labels (facet titles)
+indicator_labels <- c(
+  cc = "Control of Corruption",
+  ge = "Government Effectiveness",
+  pv = "Political Stability",
+  rl = "Rule of Law",
+  rq = "Regulatory Quality",
+  va = "Voice & Accountability"
+)
+
+#### Continent palette ####
+
+continent_colors <- c(
+"Africa" = "#C99D9B", 
+"Europe" = "#1CFEBA",  
+"Asia" = "#16ACCA",  
+"North America" = "#C62E65",  
+"Central America & Caribbean" = "#9D8DF1",  
+"South America" = "#694264",  
+"Oceania" = "#F4AC45")
+
+
+
+#### Helper: save plot with consistent size + dpi ####
+save_plot_png <- function(plot_obj, filename, width = 13, height = 8, dpi = 320) {
+  ggsave(
+    filename = file.path(plot_dir, paste0(filename, ".png")),
+    plot = plot_obj,
+    width = width,
+    height = height,
+    units = "in",
+    dpi = dpi
+  )
+}
+
+# Helper: make label set per facet (top/bottom credit + top/bottom estimate)
+make_facet_labels <- function(df_long, credit_col = total_credit_volume, n_each = 3) {
+  df_long %>%
+    filter(!!rlang::enquo(credit_col) > 0, !is.na(estimate)) %>%
+    group_by(indicator, indicator_label) %>%
+    summarise(
+      data = list(
+        bind_rows(
+          slice_max(pick(everything()), !!rlang::enquo(credit_col), n = n_each),
+          slice_min(pick(everything()), !!rlang::enquo(credit_col), n = n_each),
+          slice_max(pick(everything()), estimate, n = n_each),
+          slice_min(pick(everything()), estimate, n = n_each)
+        ) %>%
+          distinct(iso3c, .keep_all = TRUE)
+      ),
+      .groups = "drop"
+    ) %>%
+    unnest(data)
+}
+
+# Helper: build faceted plot (logged/unlogged)
+build_faceted_plot <- function(df_long, label_df, role_title, continent_col, logged = TRUE) {
+  base <- ggplot(
+    df_long %>%
+      filter(
+        total_credit_volume > 0,
+        !is.na(estimate),
+        !is.na(gdp_pc_2024),
+        !is.na(.data[[continent_col]])
+      ),
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      size = gdp_pc_2024,
+      colour = .data[[continent_col]]
+    )
+  ) +
+    geom_point(alpha = 0.7) +
+    geom_text_repel(
+      data = label_df,
+      inherit.aes = FALSE,
+      aes(
+        x = total_credit_volume,
+        y = estimate,
+        label = iso3c
+      ),
+      size = 2.8,
+      colour = "black",
+      max.overlaps = Inf
+    ) +
+    scale_size_continuous(
+      name = "GDP per capita (USD, 2024)",
+      range = c(1.5, 6),
+      labels = label_dollar(accuracy = 1)
+    ) +
+    scale_colour_manual(
+      name = "Continent",
+      values = continent_colors
+    ) +
+    scale_y_continuous(n.breaks = 5) +
+    facet_wrap(~ indicator_label, scales = "free_y") +
+    guides(
+      colour = guide_legend(override.aes = list(size = 5))
+    ) +
+    theme_minimal() +
+    theme(legend.position = "right") +
+    labs(
+      y = "Governance score (WGI)",
+      title = paste0("Forest-based carbon project volume vs governance, ", role_title),
+      subtitle = "International projects only; point size = GDP per capita (2024)"
+    )
+  
+  if (logged) {
+    base +
+      scale_x_log10(
+        labels = label_number(scale_cut = cut_si(""), accuracy = 1)
+      ) +
+      labs(x = "Total forest-based carbon credit volume (log scale)")
+  } else {
+    base +
+      scale_x_continuous(
+        labels = label_number(scale_cut = cut_si(""), accuracy = 1)
+      ) +
+      labs(x = "Total forest-based carbon credit volume")
+  }
+}
+
+#### ---------------------------
+#### Step 1 - Restrict to international traded projects
+#### ---------------------------
+Data_diff <- Data_complete_iso %>%
+  filter(
+    !is.na(ISO3_host_modern),
+    !is.na(ISO3_proponent_modern),
+    ISO3_host_modern != ISO3_proponent_modern
+  )
+
+#### ---------------------------
+#### Step 2 - Read + prep WGI (latest year in file)
+#### ---------------------------
+wgi_clean <- read_excel(wgi_path) %>%
+  filter(
+    indicator %in% names(indicator_labels)
+  ) %>%
+  mutate(
+    year = as.integer(year),
+    estimate = parse_number(as.character(estimate))
+  )
+
+latest_wgi_year <- max(wgi_clean$year, na.rm = TRUE)
+
+wgi_wide <- wgi_clean %>%
+  filter(year == latest_wgi_year) %>%
+  select(
+    iso3c = code,
+    indicator,
+    estimate
+  ) %>%
+  pivot_wider(names_from = indicator, values_from = estimate)
+
+# Checks (optional)
+stopifnot(!anyDuplicated(wgi_wide$iso3c))
+
+#### ---------------------------
+#### Step 3 - Read + prep GDP (2024) ####
+#### ---------------------------
+gdp_2024 <- read_csv(gdp_path, show_col_types = FALSE) %>%
+  transmute(
+    iso3c = country_code,
+    gdp_pc_2024 = suppressWarnings(as.numeric(`2024`))
+  )
+
+```
+
+
+```{r}
+
+#### ============================================================ ####
+####  Pipeline for Host vs Proponent WGI scatterplots ####
+#### Outputs for each WGI metric:
+####   A) Raw volume (no GDP correction)
+####   B) Standardised by HOST GDP per capita
+####   C) Standardised by HOST nominal GDP (Current US$)
+#### For each dataset:
+####   1) ALL international trades
+####   2) Top-20 participants only (both host & proponent in top20)
+#### For each plot type:
+####   i) Pair-aggregated
+####   ii) Project-level (more points and busier, but keeps volumes separated by project)
+#### ============================================================ ####
+
+library(tidyverse)
+library(readr)
+library(stringr)
+library(scales)
+
+#### --------------------------- ####
+#### Required objects from earlier script ####
+#### --------------------------- ####
+stopifnot(exists("Data_diff"))            # international only - no in-country trades
+stopifnot(exists("wgi_wide"))             # iso3c + metrics columns
+stopifnot(exists("indicator_labels"))     # named vector: cc/ge/pv/rl/rq/va
+stopifnot(exists("continent_colors"))     # your palette
+stopifnot(exists("save_plot_png"))        # your ggsave wrapper
+stopifnot(exists("gdp_2024"))             # iso3c + gdp_pc_2024
+
+stopifnot(all(c("iso3c", "gdp_pc_2024") %in% names(gdp_2024)))
+
+metrics <- names(indicator_labels)
+missing_metrics <- setdiff(metrics, names(wgi_wide))
+if (length(missing_metrics) > 0) {
+  stop("wgi_wide is missing these WGI columns: ", paste(missing_metrics, collapse = ", "))
+}
+
+#### --------------------------- ####
+#### Step 0 — Import nominal GDP (Current US$) -> gdp_total_2024 ####
+#### --------------------------- ####
+gdp_total_path <- "/Users/zoe/Desktop/CCBP/CCBP_database/data/GDP_nominal/gdp_nom_en.csv"
+
+gdp_nom_raw <- readr::read_csv(
+  gdp_total_path,
+  col_types = readr::cols(.default = readr::col_character()),
+  show_col_types = FALSE
+)
+
+iso_candidates <- c("iso3c", "country_code", "iso3", "code", "Country Code", "ISO3")
+iso_col <- names(gdp_nom_raw)[tolower(names(gdp_nom_raw)) %in% tolower(iso_candidates)][1]
+if (is.na(iso_col)) {
+  stop("Couldn't detect ISO3 column in nominal GDP file. Columns are: ",
+       paste(names(gdp_nom_raw), collapse = ", "))
+}
+
+year_cols <- names(gdp_nom_raw)[stringr::str_detect(names(gdp_nom_raw), "^\\d{4}$")]
+if (length(year_cols) == 0) {
+  stop("Couldn't detect any 4-digit year columns in nominal GDP file. Columns are: ",
+       paste(names(gdp_nom_raw), collapse = ", "))
+}
+target_year <- if ("2024" %in% year_cols) "2024" else as.character(max(as.integer(year_cols)))
+message("Nominal GDP: using year column = ", target_year)
+
+
+gdp_total_2024 <- gdp_nom_raw %>%
+  transmute(
+    iso3c = .data[[iso_col]],
+    gdp_total_2024 = readr::parse_number(.data[[target_year]])
+  ) %>%
+  filter(!is.na(iso3c)) %>%
+  distinct(iso3c, .keep_all = TRUE)
+
+stopifnot(!anyDuplicated(gdp_total_2024$iso3c))
+
+#### ---------------------------
+#### Step 1 — Build macro lookup tables (HOST-only) ####
+#### ---------------------------
+host_gdp_pc <- gdp_2024 %>%
+  select(iso3c, gdp_pc_2024) %>%
+  rename(ISO3_host_modern = iso3c, host_gdp_pc = gdp_pc_2024)
+
+host_gdp <- gdp_total_2024 %>%
+  select(iso3c, gdp_total_2024) %>%
+  rename(ISO3_host_modern = iso3c, host_gdp = gdp_total_2024)
+
+#### ---------------------------
+#### Step 2 — Helper: compute sizes (RAW + host-standardised) ####
+#### ---------------------------
+add_size_modes <- function(df, vol_col) {
+  df %>%
+    mutate(
+      vol_raw = .data[[vol_col]],
+      vol_per_host_gdp_pc = if_else(!is.na(host_gdp_pc) & host_gdp_pc > 0,
+                                    .data[[vol_col]] / host_gdp_pc, NA_real_),
+      vol_per_host_gdp = if_else(!is.na(host_gdp) & host_gdp > 0,
+                                 .data[[vol_col]] / host_gdp, NA_real_)
+    )
+}
+
+#### ---------------------------
+#### Step 3 — Helper: plot builder ####
+#### ---------------------------
+build_host_prop_scatter <- function(df, metric_key, metric_label,
+                                    size_col, size_legend_title,
+                                    title_prefix,
+                                    alpha = 0.45,
+                                    size_range = c(0.6, 8)) {
+  
+  ggplot(
+    df %>% filter(!is.na(host_continent_iso),
+                  !is.na(host_metric),
+                  !is.na(proponent_metric),
+                  !is.na(.data[[size_col]]),
+                  .data[[size_col]] > 0),
+    aes(
+      x = host_metric,
+      y = proponent_metric,
+      size = .data[[size_col]],
+      colour = host_continent_iso
+    )
+  ) +
+    geom_point(alpha = alpha) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey55") +
+    scale_colour_manual(values = continent_colors, name = "Host continent") +
+    scale_size_continuous(
+      name = size_legend_title,
+      labels = scales::label_number(scale_cut = scales::cut_si(""), accuracy = 1),
+      range = size_range
+    ) +
+    scale_x_continuous(n.breaks = 6) +
+    scale_y_continuous(n.breaks = 6) +
+    labs(
+      x = paste0("Host: ", metric_label, " (WGI ", metric_key, ")"),
+      y = paste0("Proponent: ", metric_label, " (WGI ", metric_key, ")"),
+      title = paste0(title_prefix, " — ", metric_label),
+      subtitle = "Color = host continent; dashed line is y = x"
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(face = "bold")
+    ) +
+    guides(colour = guide_legend(override.aes = list(size = 5)))
+}
+
+#### ---------------------------
+#### Step 4 — Build dataset variants: ALL vs Top-20 ####
+#### ---------------------------
+make_top20_subset <- function(df) {
+  participation <- df %>%
+    filter(sum_of_credit_volume > 0) %>%
+    summarise(host_volume = sum(sum_of_credit_volume, na.rm = TRUE), .by = ISO3_host_modern) %>%
+    rename(iso3c = ISO3_host_modern) %>%
+    full_join(
+      df %>%
+        filter(sum_of_credit_volume > 0) %>%
+        summarise(prop_volume = sum(sum_of_credit_volume, na.rm = TRUE), .by = ISO3_proponent_modern) %>%
+        rename(iso3c = ISO3_proponent_modern),
+      by = "iso3c"
+    ) %>%
+    mutate(
+      host_volume = coalesce(host_volume, 0),
+      prop_volume = coalesce(prop_volume, 0),
+      total_participation = host_volume + prop_volume
+    ) %>%
+    arrange(desc(total_participation))
+  
+  top20_iso3 <- participation %>% slice_head(n = 20) %>% pull(iso3c)
+  message("Top-20 ISO3s: ", paste(top20_iso3, collapse = ", "))
+  
+  df %>%
+    filter(
+      sum_of_credit_volume > 0,
+      ISO3_host_modern %in% top20_iso3,
+      ISO3_proponent_modern %in% top20_iso3
+    )
+}
+
+Data_all  <- Data_diff %>% filter(sum_of_credit_volume > 0)
+Data_top20 <- make_top20_subset(Data_diff)
+
+datasets <- list(
+  all = Data_all,
+  top20 = Data_top20
+)
+
+#### ---------------------------
+#### Step 5 — Define size modes to run (raw + GDPpc + GDP) ####
+#### ---------------------------
+size_modes <- list(
+  raw = list(
+    size_col_pair = "vol_raw",
+    size_col_project = "vol_raw",
+    suffix = "rawVolume",
+    legend_pair = "Total credit volume (tonnes)\n(host–proponent pair)",
+    legend_project = "Project credit volume (tonnes)"
+  ),
+  gdp_pc = list(
+    size_col_pair = "vol_per_host_gdp_pc",
+    size_col_project = "vol_per_host_gdp_pc",
+    suffix = "stdHostGDPpc",
+    legend_pair = "Credit volume / host GDP per capita\n(host–proponent pair)",
+    legend_project = "Credit volume / host GDP per capita"
+  ),
+  gdp = list(
+    size_col_pair = "vol_per_host_gdp",
+    size_col_project = "vol_per_host_gdp",
+    suffix = "stdHostGDP",
+    legend_pair = "Credit volume / host GDP (Current US$)\n(host–proponent pair)",
+    legend_project = "Credit volume / host GDP (Current US$)"
+  )
+)
+
+#### ---------------------------
+#### Step 6 — Main loop: dataset x metric x size_mode x plot_type ####
+#### ---------------------------
+for (ds_name in names(datasets)) {
+  
+  df0 <- datasets[[ds_name]]
+  
+  # pair base + project base for this dataset variant
+  pair_base <- df0 %>%
+    group_by(ISO3_host_modern, ISO3_proponent_modern) %>%
+    summarise(
+      pair_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
+      host_continent_iso = first(host_continent_iso),
+      .groups = "drop"
+    ) %>%
+    filter(pair_credit_volume > 0)
+  
+  project_base <- df0
+  
+  for (m in metrics) {
+    
+    metric_label <- unname(indicator_labels[m])
+    
+    # WGI lookups
+    wgi_m <- wgi_wide %>% select(iso3c, metric_value = all_of(m))
+    host_m <- wgi_m %>% rename(ISO3_host_modern = iso3c, host_metric = metric_value)
+    prop_m <- wgi_m %>% rename(ISO3_proponent_modern = iso3c, proponent_metric = metric_value)
+    
+    # ---- Pair join (WGI + HOST GDPpc + HOST GDP total) ----
+    pair_m0 <- pair_base %>%
+      left_join(host_m, by = "ISO3_host_modern") %>%
+      left_join(prop_m, by = "ISO3_proponent_modern") %>%
+      left_join(host_gdp_pc, by = "ISO3_host_modern") %>%
+      left_join(host_gdp, by = "ISO3_host_modern") %>%
+      filter(!is.na(host_metric), !is.na(proponent_metric)) %>%
+      add_size_modes(vol_col = "pair_credit_volume")
+    
+    # ---- Project join ----
+    project_m0 <- project_base %>%
+      left_join(host_m, by = "ISO3_host_modern") %>%
+      left_join(prop_m, by = "ISO3_proponent_modern") %>%
+      left_join(host_gdp_pc, by = "ISO3_host_modern") %>%
+      left_join(host_gdp, by = "ISO3_host_modern") %>%
+      filter(!is.na(host_metric), !is.na(proponent_metric)) %>%
+      add_size_modes(vol_col = "sum_of_credit_volume")
+    
+    for (mode_name in names(size_modes)) {
+      
+      mode <- size_modes[[mode_name]]
+      
+      ## ---- Pair plot ----
+      p_pair <- build_host_prop_scatter(
+        df = pair_m0,
+        metric_key = m,
+        metric_label = metric_label,
+        size_col = mode$size_col_pair,
+        size_legend_title = mode$legend_pair,
+        title_prefix = paste0("Host vs proponent governance (pair-aggregated, ", ds_name, ", ", mode$suffix, ")"),
+        alpha = 0.60,
+        size_range = c(1.5, 10)
+      )
+      
+      print(p_pair)
+      save_plot_png(p_pair, paste0("pair_host_vs_proponent_", ds_name, "_", m, "_", mode$suffix, "_hostcolor"))
+      
+      ## ---- Project plot ----
+      p_project <- build_host_prop_scatter(
+        df = project_m0,
+        metric_key = m,
+        metric_label = metric_label,
+        size_col = mode$size_col_project,
+        size_legend_title = mode$legend_project,
+        title_prefix = paste0("Host vs proponent governance (project-level, ", ds_name, ", ", mode$suffix, ")"),
+        alpha = 0.40,
+        size_range = c(0.6, 7.5)
+      )
+      
+      print(p_project)
+      save_plot_png(p_project, paste0("project_host_vs_proponent_", ds_name, "_", m, "_", mode$suffix, "_hostcolor"))
+    }
+  }
+}
+
+message("DONE: generated plots for all datasets x metrics x size modes x plot types.")
+
+
+################################################
+
+
+```
+
+```{r}
+##### Save space for Network Diagrams if we choose to make them ####
+
+```
+
+```{r}
+
+###### OLD PLOTTING - original simple versions ######
+
+#### ============================================================
+#### PART A — HOST plots ####
+#### ============================================================
+
+# Aggregate carbon volume by host
+host_carbon_totals <- Data_diff %>%
+  group_by(ISO3_host_modern) %>%
+  summarise(
+    total_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
+    host_continent_iso = first(host_continent_iso),
+    .groups = "drop"
+  ) %>%
+  rename(iso3c = ISO3_host_modern)
+
+stopifnot(!anyDuplicated(host_carbon_totals$iso3c))
+
+# Join WGI + GDP, then long
+host_carbon_wgi_long <- host_carbon_totals %>%
+  left_join(wgi_wide, by = "iso3c") %>%
+  left_join(gdp_2024, by = "iso3c") %>%
+  pivot_longer(
+    cols = all_of(names(indicator_labels)),
+    names_to = "indicator",
+    values_to = "estimate"
+  ) %>%
+  mutate(
+    indicator_label = unname(indicator_labels[indicator])
+  )
+
+# Labels per facet
+label_countries_facets_host <- make_facet_labels(host_carbon_wgi_long)
+
+# Plots: logged + unlogged
+host_govmetrics_logged <- build_faceted_plot(
+  df_long = host_carbon_wgi_long,
+  label_df = label_countries_facets_host,
+  role_title = "host countries",
+  continent_col = "host_continent_iso",
+  logged = TRUE
+)
+
+
+host_govmetrics_unlogged <- build_faceted_plot(
+  df_long = host_carbon_wgi_long,
+  label_df = label_countries_facets_host,
+  role_title = "host countries",
+  continent_col = "host_continent_iso",
+  logged = FALSE
+)
+
+# Print + save
+print(host_govmetrics_logged)
+save_plot_png(host_govmetrics_logged, "host_govmetrics_logged")
+
+print(host_govmetrics_unlogged)
+save_plot_png(host_govmetrics_unlogged, "host_govmetrics_unlogged")
+
+#### ============================================================
+#### PART B — PROPONENT plots
+#### ============================================================
+
+# Aggregate carbon volume by proponent
+proponent_carbon_totals <- Data_diff %>%
+  group_by(ISO3_proponent_modern) %>%
+  summarise(
+    total_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
+    proponent_continent_iso = first(proponent_continent_iso),
+    .groups = "drop"
+  ) %>%
+  rename(iso3c = ISO3_proponent_modern)
+
+stopifnot(!anyDuplicated(proponent_carbon_totals$iso3c))
+
+# Join WGI + GDP, then long
+proponent_carbon_wgi_long <- proponent_carbon_totals %>%
+  left_join(wgi_wide, by = "iso3c") %>%
+  left_join(gdp_2024, by = "iso3c") %>%
+  pivot_longer(
+    cols = all_of(names(indicator_labels)),
+    names_to = "indicator",
+    values_to = "estimate"
+  ) %>%
+  mutate(
+    indicator_label = unname(indicator_labels[indicator])
+  )
+
+# Labels per facet
+label_countries_facets_proponent <- make_facet_labels(proponent_carbon_wgi_long)
+
+# Plots: logged + unlogged
+proponent_govmetrics_logged <- build_faceted_plot(
+  df_long = proponent_carbon_wgi_long,
+  label_df = label_countries_facets_proponent,
+  role_title = "proponent countries",
+  continent_col = "proponent_continent_iso",
+  logged = TRUE
+)
+
+proponent_govmetrics_unlogged <- build_faceted_plot(
+  df_long = proponent_carbon_wgi_long,
+  label_df = label_countries_facets_proponent,
+  role_title = "proponent countries",
+  continent_col = "proponent_continent_iso",
+  logged = FALSE
+)
+
+# Print + save
+print(proponent_govmetrics_logged)
+save_plot_png(proponent_govmetrics_logged, "proponent_govmetrics_logged")
+
+print(proponent_govmetrics_unlogged)
+save_plot_png(proponent_govmetrics_unlogged, "proponent_govmetrics_unlogged")
+
+#### ============================================================
+#### PART C — Host vs Proponent comparison plots ####
+#### ============================================================
+
+# --- C1: RQ only (overlay) ---
+host_rq <- host_carbon_wgi_long %>%
+  filter(indicator == "rq", total_credit_volume > 0, !is.na(estimate)) %>%
+  mutate(role = "Host")
+
+proponent_rq <- proponent_carbon_wgi_long %>%
+  filter(indicator == "rq", total_credit_volume > 0, !is.na(estimate)) %>%
+  mutate(role = "Proponent")
+
+rq_combined <- bind_rows(host_rq, proponent_rq)
+
+# Logged overlay (recommended for volume)
+host_proponents_rq_logged <- ggplot(
+  rq_combined,
+  aes(x = total_credit_volume, y = estimate, colour = role)
+) +
+  geom_point(alpha = 0.6, size = 2) +
+  scale_colour_manual(
+    values = c("Host" = "#8ECae6", "Proponent" = "#CDB4DB"),
+    name = "Country role"
+  ) +
+  scale_x_log10(labels = label_number(scale_cut = cut_si(""), accuracy = 1)) +
+  scale_y_continuous(n.breaks = 5) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+  labs(
+    x = "Total forest-based carbon credit volume (log scale)",
+    y = "Regulatory Quality (WGI)",
+    title = "Regulatory quality vs forest-based carbon credit volume",
+    subtitle = "Hosts (blue) vs proponents (purple)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "right", legend.title = element_text(face = "bold"))
+
+# Unlogged overlay
+host_proponents_rq_unlogged <- host_proponents_rq_logged +
+  scale_x_continuous(labels = label_number(scale_cut = cut_si(""), accuracy = 1)) +
+  labs(
+    x = "Total forest-based carbon credit volume",
+    subtitle = "Hosts (blue) vs proponents (purple); linear scale"
+  )
+
+print(host_proponents_rq_logged)
+save_plot_png(host_proponents_rq_logged, "host_proponents_rq_logged")
+
+print(host_proponents_rq_unlogged)
+save_plot_png(host_proponents_rq_unlogged, "host_proponents_rq_unlogged")
+
+# --- C2: ALL governance metrics, Host vs Proponent (faceted, no GDP size) ---
+# (This answers your “faceted or single plot comparing hosts and proponents across metrics” request.)
+host_all <- host_carbon_wgi_long %>%
+  filter(total_credit_volume > 0, !is.na(estimate)) %>%
+  mutate(role = "Host") %>%
+  select(role, iso3c, indicator, indicator_label, total_credit_volume, estimate)
+
+proponent_all <- proponent_carbon_wgi_long %>%
+  filter(total_credit_volume > 0, !is.na(estimate)) %>%
+  mutate(role = "Proponent") %>%
+  select(role, iso3c, indicator, indicator_label, total_credit_volume, estimate)
+
+host_proponents_gov_metrics_all <- bind_rows(host_all, proponent_all)
+
+host_proponents_gov_metrics_all_logged <- ggplot(
+  host_proponents_gov_metrics_all,
+  aes(x = total_credit_volume, y = estimate, colour = role)
+) +
+  geom_point(alpha = 0.55, size = 1.8) +
+  scale_colour_manual(
+    values = c("Host" = "#8ECae6", "Proponent" = "#CDB4DB"),
+    name = "Country role"
+  ) +
+  scale_x_log10(labels = label_number(scale_cut = cut_si(""), accuracy = 1)) +
+  scale_y_continuous(n.breaks = 5) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  labs(
+    x = "Total forest-based carbon credit volume (log scale)",
+    y = "Governance score (WGI)",
+    title = "Governance vs forest-based carbon credit volume",
+    subtitle = "Host vs proponent countries; faceted across WGI metrics"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "right", legend.title = element_text(face = "bold"))
+
+host_proponents_gov_metrics_all_unlogged <- host_proponents_gov_metrics_all_logged +
+  scale_x_continuous(labels = label_number(scale_cut = cut_si(""), accuracy = 1)) +
+  labs(
+    x = "Total forest-based carbon credit volume",
+    subtitle = "Host vs proponent countries; linear scale; faceted across WGI metrics"
+  )
+
+print(host_proponents_gov_metrics_all_logged)
+save_plot_png(host_proponents_gov_metrics_all_logged, "host_proponents_gov_metrics_all_logged")
+
+print(host_proponents_gov_metrics_all_unlogged)
+save_plot_png(host_proponents_gov_metrics_all_unlogged, "host_proponents_gov_metrics_all_unlogged")
+
+#### ------------------------ ####
+#### ------------------------ ####
+#### ------------------------ ####
+#### ------------------------ ####
+
+
+
+
+
+#### OLD VERSION OF PLOT CODE #### 
+
+
+
+#### PART 1 - Making governance plots for project host countries ####
+
+# indicators include Voice and Accountability Political Stability and Absence of Violence/Terrorism, Government Effectiveness, Regulatory Quality, Rule of Law, Control of Corruption (https://www.worldbank.org/en/publication/worldwide-governance-indicators)
+
+# GDP per capita data sourced from World Bank (https://data.worldbank.org/indicator/NY.GDP.PCAP.CD)
+
+
+
+# This approach makes a facet wrap of all government indicators. Next we can use this to decide on indicators we care about, and what other variables we can include with graduated symbols or color scale #
+
+library(tidyverse)
+library(countrycode)
+library(readxl)
+library(scales)
+library(ggrepel)
+library(readr)
+
+#### Step 1 - Sorting for only international traded projects ####
+
+# starting with Data_complete_iso because it has already been cleaned, continents and ISO assigned, names cleaned in the above cleaning steps
+
+Data_diff <- Data_complete_iso %>%
+  filter(
+    !is.na(ISO3_host_modern),
+    !is.na(ISO3_proponent_modern),
+    ISO3_host_modern != ISO3_proponent_modern
+  )
+
+# now we have reduced the dataset to only projects that have different proponent/hosts
+
+# “We restricted analyses to international carbon projects, defined as projects where the buyer country differed from the host country, based on ISO-3 country codes after harmonising country name variants.”
+
+
+#### Step 2 - Aggregate carbon volume by host country (ISO level) ####
+
+host_carbon_totals <- Data_diff %>%
+  group_by(ISO3_host_modern) %>%
+  summarise(
+    total_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
+    host_continent_iso = first(host_continent_iso),
+    .groups = "drop"
+  ) %>%
+  rename(
+    iso3c = ISO3_host_modern
+  )
+
+
+# check this
+
+any(duplicated(host_carbon_totals$iso3c))
+
+
+# should be FALSE
+
+#### Step 3 - clean WGI data (governance metrics) ####
+
+wgi_path <- "/Users/zoe/Desktop/CCBP/CCBP_database/data/gov_indicators_wgi/wgidataset.xlsx"
+
+wgi_clean <- read_excel(wgi_path) %>%
+  filter(
+    indicator %in% c("cc", "ge", "pv", "rl", "rq", "va"),
+    year == max(year, na.rm = TRUE)
+  ) %>%
+  mutate(
+    estimate = parse_number(estimate)
+  ) %>%
+  select(
+    iso3c = code,
+    indicator,
+    estimate
+  )
+
+
+#### Step 4 - pivot wider #####
+
+wgi_wide <- wgi_clean %>%
+  pivot_wider(
+    names_from = indicator,
+    values_from = estimate
+  )
+
+
+
+#### Step 5 - Join carbon data + governance metrics ####
+
+host_carbon_wgi <- host_carbon_totals %>%
+  left_join(wgi_wide, by = "iso3c")
+
+# check this 
+
+any(duplicated(wgi_wide$iso3c))
+any(duplicated(host_carbon_totals$iso3c))
+
+# should be FALSE
+
+
+host_carbon_wgi %>%
+  mutate(
+    region = case_when(
+      iso3c %in% north_america_iso3   ~ "North America",
+      iso3c %in% central_america_iso3 ~ "Central America & Caribbean",
+      iso3c %in% south_america_iso3   ~ "South America",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(is.na(region)) %>%
+  distinct(iso3c, host_continent_iso)
+
+
+
+
+
+#### Step 6 - pivot longer for faceting ####
+
+host_carbon_wgi_long <- host_carbon_wgi %>%
+  pivot_longer(
+    cols = c(cc, ge, pv, rl, rq, va),
+    names_to = "indicator",
+    values_to = "estimate"
+  )
+
+
+#### Step 7 - make indicator labels for gov. metrics ####
+
+indicator_labels <- c(
+  cc = "Control of Corruption",
+  ge = "Government Effectiveness",
+  pv = "Political Stability",
+  rl = "Rule of Law",
+  rq = "Regulatory Quality",
+  va = "Voice & Accountability"
+)
+
+host_carbon_wgi_long <- host_carbon_wgi_long %>%
+  mutate(
+    indicator_label = indicator_labels[indicator]
+  )
+
+
+#### Step 8 - make country labels for each facet ####
+
+label_countries_facets <- host_carbon_wgi_long %>%
+  filter(
+    total_credit_volume > 0,
+    !is.na(estimate)
+  ) %>%
+  group_by(indicator, indicator_label) %>%
+  summarise(
+    data = list(
+      bind_rows(
+        slice_max(pick(everything()), total_credit_volume, n = 3),
+        slice_min(pick(everything()), total_credit_volume, n = 3),
+        slice_max(pick(everything()), estimate, n = 3),
+        slice_min(pick(everything()), estimate, n = 3)
+      ) %>%
+        distinct(iso3c, .keep_all = TRUE)
+    ),
+    .groups = "drop"
+  ) %>%
+  unnest(data)
+
+#### Step 9 - join GDP to carbon/WGI data for making graduated symbols ####
+
+gdp <- read_csv(
+  "/Users/zoe/Desktop/CCBP/CCBP_database/data/GDP_world_data/gdp_world_data_country.csv",
+  show_col_types = FALSE
+)
+
+gdp_2024 <- gdp %>%
+  transmute(
+    iso3c = country_code,
+    gdp_pc_2024 = as.numeric(`2024`)
+  )
+
+host_carbon_wgi_long <- host_carbon_wgi_long %>%
+  left_join(gdp_2024, by = "iso3c")
+
+
+#### Step 10 - Plot with GDP/continents/country labels ####
+
+continent_colors <- c(
+  "North America" = "#90C2E7",
+  "Central America & Caribbean" = "#7088B4",
+  "South America" = "#6D7F74",
+  "Africa"   = "#4F4D80",
+  "Asia" = "#A37466",
+  "Europe" = "#98A886",
+  "Oceania" = "#415662"
+)
+
+ggplot(
+  host_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024),
+      !is.na(host_continent_iso)
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024,
+    colour = host_continent_iso
+  )
+) +
+  geom_point(alpha = 0.7) +
+  geom_text_repel(
+    data = label_countries_facets,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = iso3c
+    ),
+    size = 2.8,
+    colour = "black",
+    max.overlaps = Inf
+  ) +
+  scale_x_log10(
+    labels = label_number(
+      scale_cut = cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    range = c(1.5, 6),
+    labels = label_dollar(accuracy = 1)
+  ) +
+  scale_colour_manual(
+    name = "Continent",
+    values = continent_colors
+  ) +
+  scale_y_continuous(n.breaks = 5) +
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    x = "Total forest-based carbon credit volume (log scale)",
+    y = "Governance score (WGI)",
+    title = "Forest-based carbon project volume vs governance, host countries",
+    subtitle = "International projects only; point size = GDP per capita (2024)"
+  ) +
+  
+  guides(
+    colour = guide_legend(
+      override.aes = list(size = 5)
+    )
+  )
+
+
+
+#### Step 11 — Unlogged version (linear x-axis) ####
+
+gov_host_plot_faceted_gdp_linear <- ggplot(
+  host_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024),
+      !is.na(host_continent_iso)
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024,
+    colour = host_continent_iso
+  )
+) +
+  geom_point(alpha = 0.7) +
+  
+  geom_text_repel(
+    data = label_countries_facets,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = iso3c
+    ),
+    size = 2.8,
+    colour = "black",
+    box.padding = 0.4,
+    point.padding = 0.3,
+    segment.color = "grey60",
+    max.overlaps = Inf
+  ) +
+  
+  scale_x_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    range = c(1.5, 6),
+    labels = scales::label_dollar(accuracy = 1)
+  ) +
+  
+  scale_colour_manual(
+    name = "Continent",
+    values = continent_colors
+  ) +
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  
+  guides(
+    colour = guide_legend(
+      override.aes = list(size = 5)
+    )
+  ) +
+  
+  labs(
+    x = "Total forest-based carbon credit volume",
+    y = "Governance score (WGI)",
+    title = "Forest-based carbon project volume vs governance, host countries",
+    subtitle = "International projects only; linear x-axis; point size = GDP per capita (2024)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right"
+  )
+
+print(gov_host_plot_faceted_gdp_linear)
+
+
+########### ------------------ ###############
+########### ------------------ ###############
+########### ------------------ ###############
+########### ------------------ ###############
+########### ------------------ ###############
+########### ------------------ ###############
+
+#### PART 2 - Making governance plots for project proponent countries ####
+
+
+library(tidyverse)
+library(countrycode)
+library(readxl)
+library(scales)
+library(ggrepel)
+library(readr)
+
+#### Step 1 - PROPONENTS Sorting for only international traded projects ####
+
+# starting with Data_complete_iso because it has already been cleaned, continents and ISO assigned, names cleaned in the above cleaning steps
+
+Data_diff <- Data_complete_iso %>%
+  filter(
+    !is.na(ISO3_host_modern),
+    !is.na(ISO3_proponent_modern),
+    ISO3_host_modern != ISO3_proponent_modern
+  )
+
+# now we have reduced the dataset to only projects that have different proponent/hosts
+
+
+#### Step 2 - Aggregate carbon volume by proponent country (ISO level) ####
+
+proponent_carbon_totals <- Data_diff %>%
+  group_by(ISO3_proponent_modern) %>%
+  summarise(
+    total_credit_volume = sum(sum_of_credit_volume, na.rm = TRUE),
+    proponent_continent_iso = first(proponent_continent_iso),
+    .groups = "drop"
+  ) %>%
+  rename(
+    iso3c = ISO3_proponent_modern
+  )
+
+
+# check this
+
+any(duplicated(proponent_carbon_totals$iso3c))
+
+# should be FALSE
+
+#### Step 3 - clean WGI data (governance metrics) ####
+
+wgi_path <- "/Users/zoe/Desktop/CCBP/CCBP_database/data/gov_indicators_wgi/wgidataset.xlsx"
+
+wgi_clean <- read_excel(wgi_path) %>%
+  filter(
+    indicator %in% c("cc", "ge", "pv", "rl", "rq", "va"),
+    year == max(year, na.rm = TRUE)
+  ) %>%
+  mutate(
+    estimate = parse_number(estimate)
+  ) %>%
+  select(
+    iso3c = code,
+    indicator,
+    estimate
+  )
+
+
+#### Step 4 - pivot wider #####
+
+wgi_wide <- wgi_clean %>%
+  pivot_wider(
+    names_from = indicator,
+    values_from = estimate
+  )
+
+
+
+#### Step 5 - Join carbon data + governance metrics ####
+
+proponent_carbon_wgi <- proponent_carbon_totals %>%
+  left_join(wgi_wide, by = "iso3c")
+
+# check this 
+
+any(duplicated(wgi_wide$iso3c))
+any(duplicated(proponent_carbon_totals$iso3c))
+
+# should be FALSE
+
+
+#### Step 6 - pivot longer for faceting ####
+
+proponent_carbon_wgi_long <- proponent_carbon_wgi %>%
+  pivot_longer(
+    cols = c(cc, ge, pv, rl, rq, va),
+    names_to = "indicator",
+    values_to = "estimate"
+  )
+
+
+#### Step 7 - make indicator labels for gov. metrics ####
+
+indicator_labels <- c(
+  cc = "Control of Corruption",
+  ge = "Government Effectiveness",
+  pv = "Political Stability",
+  rl = "Rule of Law",
+  rq = "Regulatory Quality",
+  va = "Voice & Accountability"
+)
+
+proponent_carbon_wgi_long <- proponent_carbon_wgi_long %>%
+  mutate(
+    indicator_label = indicator_labels[indicator]
+  )
+
+
+#### Step 8 - make country labels for each facet ####
+
+label_countries_facets_proponents <- proponent_carbon_wgi_long %>%
+  filter(
+    total_credit_volume > 0,
+    !is.na(estimate)
+  ) %>%
+  group_by(indicator, indicator_label) %>%
+  summarise(
+    data = list(
+      bind_rows(
+        slice_max(pick(everything()), total_credit_volume, n = 3),
+        slice_min(pick(everything()), total_credit_volume, n = 3),
+        slice_max(pick(everything()), estimate, n = 3),
+        slice_min(pick(everything()), estimate, n = 3)
+      ) %>%
+        distinct(iso3c, .keep_all = TRUE)
+    ),
+    .groups = "drop"
+  ) %>%
+  unnest(data)
+
+#### Step 9 - join GDP to carbon/WGI data for making graduated symbols ####
+
+gdp <- read_csv(
+  "/Users/zoe/Desktop/CCBP/CCBP_database/data/GDP_world_data/gdp_world_data_country.csv",
+  show_col_types = FALSE
+)
+
+gdp_2024 <- gdp %>%
+  transmute(
+    iso3c = country_code,
+    gdp_pc_2024 = as.numeric(`2024`)
+  )
+
+proponent_carbon_wgi_long <- proponent_carbon_wgi_long %>%
+  left_join(gdp_2024, by = "iso3c")
+
+
+#### Step 10 - Plot with GDP/continents/country labels ####
+
+continent_colors <- c(
+  "North America" = "#90C2E7",
+  "Central America & Caribbean" = "#7088B4",
+  "South America" = "#6D7F74",
+  "Africa"   = "#4F4D80",
+  "Asia" = "#A37466",
+  "Europe" = "#98A886",
+  "Oceania" = "#415662"
+)
+
+gov_proponent_plot_faceted_gdp_logged <- ggplot(
+  proponent_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024),
+      !is.na(proponent_continent_iso)
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024,
+    colour = proponent_continent_iso
+  )
+) +
+  geom_point(alpha = 0.7) +
+  geom_text_repel(
+    data = label_countries_facets_proponents,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = iso3c
+    ),
+    size = 2.8,
+    colour = "black",
+    max.overlaps = Inf
+  ) +
+  scale_x_log10(
+    labels = label_number(
+      scale_cut = cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    range = c(1.5, 6),
+    labels = label_dollar(accuracy = 1)
+  ) +
+  scale_colour_manual(
+    name = "Continent",
+    values = continent_colors
+  ) +
+  scale_y_continuous(n.breaks = 5) +
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    x = "Total forest-based carbon credit volume (log scale)",
+    y = "Governance score (WGI)",
+    title = "Forest-based carbon project volume vs governance, proponent countries",
+    subtitle = "International projects only; point size = GDP per capita (2024)"
+  ) +
+  
+  guides(
+    colour = guide_legend(
+      override.aes = list(size = 5)
+    )
+  )
+
+gov_proponent_plot_faceted_gdp_logged
+
+#### Step 11 — Unlogged version (linear x-axis) ####
+
+gov_proponent_plot_faceted_gdp_linear <- ggplot(
+  proponent_carbon_wgi_long %>%
+    filter(
+      total_credit_volume > 0,
+      !is.na(estimate),
+      !is.na(gdp_pc_2024),
+      !is.na(proponent_continent_iso)
+    ),
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    size = gdp_pc_2024,
+    colour = proponent_continent_iso
+  )
+) +
+  geom_point(alpha = 0.7) +
+  
+  geom_text_repel(
+    data = label_countries_facets_proponents,
+    inherit.aes = FALSE,
+    aes(
+      x = total_credit_volume,
+      y = estimate,
+      label = iso3c
+    ),
+    size = 2.8,
+    colour = "black",
+    box.padding = 0.4,
+    point.padding = 0.3,
+    segment.color = "grey60",
+    max.overlaps = Inf
+  ) +
+  
+  scale_x_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  
+  scale_size_continuous(
+    name = "GDP per capita (USD, 2024)",
+    range = c(1.5, 6),
+    labels = scales::label_dollar(accuracy = 1)
+  ) +
+  
+  scale_colour_manual(
+    name = "Continent",
+    values = continent_colors
+  ) +
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  facet_wrap(~ indicator_label, scales = "free_y") +
+  
+  guides(
+    colour = guide_legend(
+      override.aes = list(size = 5)
+    )
+  ) +
+  
+  labs(
+    x = "Total forest-based carbon credit volume",
+    y = "Governance score (WGI)",
+    title = "Forest-based carbon project volume vs governance, proponent countries",
+    subtitle = "International projects only; linear x-axis; point size = GDP per capita (2024)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right"
+  )
+
+print(gov_proponent_plot_faceted_gdp_linear)
+
+
+
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+##### ---- #####
+
+
+
+
+####### Plotting governance metrics comparing host and proponents ########
+
+##### HOST AND PROPONENT PLOT - with RQ gov metric only ####
+
+#### Step 1 - prepare RQ for hosts and props ####
+
+host_rq <- host_carbon_wgi_long %>%
+filter(
+  indicator == "rq",
+  total_credit_volume > 0,
+  !is.na(estimate)
+) %>%
+  mutate(role = "Host")
+
+proponent_rq <- proponent_carbon_wgi_long %>%
+  filter(
+    indicator == "rq",
+    total_credit_volume > 0,
+    !is.na(estimate)
+  ) %>%
+  mutate(role = "Proponent")
+
+
+#### Step 2 - combine into dataframe #####
+
+rq_combined <- bind_rows(host_rq, proponent_rq)
+
+#check
+table(rq_combined$role)
+
+#### Step 3 - plot ####
+
+rq_overlay_plot <- ggplot(
+  rq_combined,
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    colour = role
+  )
+) +
+  geom_point(
+    alpha = 0.6,
+    size = 2
+  ) +
+  
+  scale_colour_manual(
+    values = c(
+      "Host" = "#8ECae6",      # light blue
+      "Proponent" = "#CDB4DB"  # light purple
+    ),
+    name = "Country role"
+  ) +
+  
+  scale_x_log10(
+    labels = label_number(
+      scale_cut = cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+  
+  labs(
+    x = "Total forest-based carbon credit volume (log scale)",
+    y = "Regulatory Quality (WGI)",
+    title = "Regulatory quality vs forest-based carbon credit volume",
+    subtitle = "Host countries (blue) vs proponent countries (purple)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold")
+  )
+
+print(rq_overlay_plot)
+
+#### UNLOGGED #####
+
+rq_overlay_plot_linear <- ggplot(
+  rq_combined,
+  aes(
+    x = total_credit_volume,
+    y = estimate,
+    colour = role
+  )
+) +
+  geom_point(
+    alpha = 0.6,
+    size = 2
+  ) +
+  
+  scale_colour_manual(
+    values = c(
+      "Host" = "#17bebb",      # light blue
+      "Proponent" = "#cd5334"  # light purple
+    ),
+    name = "Country role"
+  ) +
+  
+  scale_x_continuous(
+    labels = scales::label_number(
+      scale_cut = scales::cut_si(""),
+      accuracy = 1
+    )
+  ) +
+  
+  scale_y_continuous(n.breaks = 5) +
+  
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+  
+  labs(
+    x = "Total forest-based carbon credit volume",
+    y = "Regulatory Quality (WGI)",
+    title = "Regulatory quality vs forest-based carbon credit volume",
+    subtitle = "Host countries (blue) vs proponent countries (purple); linear scale"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold")
+  )
+
+print(rq_overlay_plot_linear)
+
+```
+
+```
+
+
+
+```{r}
+#### preparing data for alluvial plot #####
+
+Data_diff <- Data_complete %>%
+  filter(proponent_country_manual != host_country_or_area)
+
+flow_matrix <- Data_diff %>%
+  mutate(sum_of_credit_volume = as.numeric(sum_of_credit_volume)) %>%  # Convert to numeric
+  group_by(buyer_continent, project_continent) %>%
+  summarise(total_volume = sum(sum_of_credit_volume, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(
+    names_from = project_continent,
+    values_from = total_volume,
+    values_fill = 0
+  ) %>%
+  column_to_rownames("buyer_continent")
+
+# View the result
+print(flow_matrix)
+
+#Put it into alluvial format
+# Convert the matrix to a data frame
+flow_df <- as.data.frame(flow_matrix)
+
+# Add the source column from row names
+flow_df <- flow_df %>%
+  mutate(source = rownames(flow_matrix)) %>%
+  relocate(source)
+
+# View the result
+print(flow_df)
+
+df_long <- flow_df %>%
+  pivot_longer(cols = -source, names_to = "target", values_to = "value") %>%
+  filter(value > 0) %>%  # Optional: remove zero flows
+  mutate(
+    source = factor(source, levels = unique(source)),
+    target = factor(target, levels = unique(target))
+  )
+
+#Create alluvial plots for flows between regions
+#Plot with labels
+p <- ggplot(df_long,
+       aes(axis1 = source, axis2 = target, y = value)) +
+  geom_alluvium(aes(fill = source), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "grey", color = "black") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2) +
+  scale_x_discrete(limits = c("Origin", "Retirement"), expand = c(.05, .05))  +
+  scale_fill_manual(values = c(
+    "Africa" = "#4f2fee",
+    "Asia" = "#42999b",
+    "Europe" = "#70ffc4",
+    "North America" = "#fac723",
+    "South America" = "#ff5c9a",
+    "Oceania" = "#b25b68"
+  )) +
+  theme_minimal() +
+  ggtitle("Forest-based carbon flows between regions")
+
+#Plot without labels
+p2 <- ggplot(df_long,
+       aes(axis1 = source, axis2 = target, y = value)) +
+  geom_alluvium(aes(fill = source), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "grey", color = "black") +
+  #geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2) +
+  scale_x_discrete(limits = c("Origin", "Retirement"), expand = c(.05, .05))  +
+  scale_fill_manual(values = c(
+    "Africa" = "#4f2fee",
+    "Asia" = "#42999b",
+    "Europe" = "#70ffc4",
+    "North America" = "#fac723",
+    "South America" = "#ff5c9a",
+    "Oceania" = "#b25b68"
+  )) +
+  theme_minimal() +
+  ggtitle("Forest-based carbon flows between regions")
+
+print(p2)
+p2
+
+# Export to both plots
+ggsave("/Users/zoe/Desktop/CCBP/CCBP_database/figures/alluvial_plot_text_zl_testing.png", plot = p, width = 10, height = 6, dpi = 300)
+ggsave("/Users/zoe/Desktop/CCBP/CCBP_database/figures/alluvial_plot_zl_testing.png", plot = p2, width = 10, height = 6, dpi = 300)
+
+#Create the plot for flows between countries
+# Make sure Credit.Volume is numeric
+Data_complete <- Data_diff %>%
+  mutate(Credit.Volume = as.numeric(gsub(",", "", Credit.Volume)))
+
+# Summarise and reshape to long format for alluvial plot
+df_long_country <- Data_complete %>%
+  group_by(Headquarter.Country, Project.Country) %>%
+  summarise(value = sum(Credit.Volume, na.rm = TRUE), .groups = "drop") %>%
+  rename(source = Headquarter.Country, target = Project.Country)
+
+# Create the alluvial plot with labels
+p3 <- ggplot(df_long_country,
+            aes(axis1 = source, axis2 = target, y = value)) +
+  geom_alluvium(aes(fill = source), width = 1/12, alpha = 0.8) +
+  geom_stratum(width = 1/12, fill = "grey90", color = "black") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2, hjust = 0) +
+  scale_x_discrete(limits = c("Origin", "Retirement"), expand = c(.05, .05)) +
+  theme_minimal() +
+  ggtitle("Forest-based carbon flows between countries")
+
+# Print the plot
+print(p3)
+ggsave("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/figures/countries_text.png", plot = p3, width = 10, height = 6, dpi = 300)
+
+# Create the alluvial plot without labels
+p4 <- ggplot(df_long_country,
+            aes(axis1 = source, axis2 = target, y = value)) +
+  geom_alluvium(aes(fill = source), width = 1/12, alpha = 0.8) +
+  geom_stratum(width = 1/12, fill = "grey90", color = "black") +
+  #geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2, hjust = 0) +
+  scale_x_discrete(limits = c("Origin", "Retirement"), expand = c(.05, .05)) +
+  theme_minimal() +
+  ggtitle("Forest-based carbon flows between countries")
+
+
+# Print the plot
+print(p4)
+ggsave("C:/Users/uqbwil14/Dropbox/Carbon crossing borders project/Rcode_bw/CCBP/figures/countries.png", plot = p4, width = 10, height = 6, dpi = 300)
+
+```
+
+Summaries for reporting purposes
+```{r}
+# Make sure Credit.Volume is numeric
+Data_complete <- Data_complete %>%
+  mutate(Credit.Volume = as.numeric(Credit.Volume))
+
+# Group and summarise
+top_countries <- Data_complete %>%
+  group_by(Headquarter.Country) %>%
+  summarise(Total_Credit = sum(Credit.Volume, na.rm = TRUE)) %>%
+  arrange(desc(Total_Credit))
+
+# View result
+print(top_countries)
+
+# Summarise by Project.Country
+top_projects <- Data_complete %>%
+  group_by(Project.Country) %>%
+  summarise(Total_Credit = sum(Credit.Volume, na.rm = TRUE)) %>%
+  arrange(desc(Total_Credit)) %>%
+  slice_head(n = 10)  # Top 10
+
+# View result
+print(top_projects)
+
+## hello ##
+
+print(top_projects)
+```
+
+```{r}
+verra_projects <- subset(Data, Registry == "Verra")
+unique(verra_projects$Project.Methodologies)
+
+```
+```{r}
+
