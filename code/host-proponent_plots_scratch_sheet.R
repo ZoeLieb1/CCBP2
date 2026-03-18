@@ -1288,8 +1288,8 @@
 ################################################
 
 
-#### ============================================================
-#### ONE-CHUNK PIPELINE: Host vs Proponent WGI scatterplots ####
+#### ============================================================ ####
+####  Pipeline for Host vs Proponent WGI scatterplots ####
 #### Outputs for each WGI metric:
 ####   A) Raw volume (no GDP correction)
 ####   B) Standardised by HOST GDP per capita
@@ -1299,8 +1299,8 @@
 ####   2) Top-20 participants only (both host & proponent in top20)
 #### For each plot type:
 ####   i) Pair-aggregated
-####   ii) Project-level
-#### ============================================================
+####   ii) Project-level (more points and busier, but keeps volumes separated by project)
+#### ============================================================ ####
 
 library(tidyverse)
 library(readr)
@@ -1308,7 +1308,7 @@ library(stringr)
 library(scales)
 
 #### --------------------------- ####
-#### Required objects from your earlier script ####
+#### Required objects from earlier script ####
 #### --------------------------- ####
 stopifnot(exists("Data_diff"))            # international only - no in-country trades
 stopifnot(exists("wgi_wide"))             # iso3c + metrics columns
@@ -1363,7 +1363,7 @@ gdp_total_2024 <- gdp_nom_raw %>%
 stopifnot(!anyDuplicated(gdp_total_2024$iso3c))
 
 #### ---------------------------
-#### Step 1 — Build macro lookup tables (HOST-only)
+#### Step 1 — Build macro lookup tables (HOST-only) ####
 #### ---------------------------
 host_gdp_pc <- gdp_2024 %>%
   select(iso3c, gdp_pc_2024) %>%
@@ -1374,7 +1374,7 @@ host_gdp <- gdp_total_2024 %>%
   rename(ISO3_host_modern = iso3c, host_gdp = gdp_total_2024)
 
 #### ---------------------------
-#### Step 2 — Helper: compute sizes (RAW + host-standardised)
+#### Step 2 — Helper: compute sizes (RAW + host-standardised) ####
 #### ---------------------------
 add_size_modes <- function(df, vol_col) {
   df %>%
@@ -1388,7 +1388,7 @@ add_size_modes <- function(df, vol_col) {
 }
 
 #### ---------------------------
-#### Step 3 — Helper: plot builder
+#### Step 3 — Helper: plot builder ####
 #### ---------------------------
 build_host_prop_scatter <- function(df, metric_key, metric_label,
                                     size_col, size_legend_title,
@@ -1434,7 +1434,7 @@ build_host_prop_scatter <- function(df, metric_key, metric_label,
 }
 
 #### ---------------------------
-#### Step 4 — Build dataset variants: ALL vs Top-20
+#### Step 4 — Build dataset variants: ALL vs Top-20 ####
 #### ---------------------------
 make_top20_subset <- function(df) {
   participation <- df %>%
@@ -1475,7 +1475,7 @@ datasets <- list(
 )
 
 #### ---------------------------
-#### Step 5 — Define size modes to run (raw + GDPpc + GDP)
+#### Step 5 — Define size modes to run (raw + GDPpc + GDP) ####
 #### ---------------------------
 size_modes <- list(
   raw = list(
@@ -1502,7 +1502,7 @@ size_modes <- list(
 )
 
 #### ---------------------------
-#### Step 6 — Main loop: dataset x metric x size_mode x plot_type
+#### Step 6 — Main loop: dataset x metric x size_mode x plot_type ####
 #### ---------------------------
 for (ds_name in names(datasets)) {
   
