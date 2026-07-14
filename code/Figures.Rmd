@@ -624,6 +624,8 @@ build_faceted_plot <- function(df_long, label_df, role_title, continent_col, log
   }
 }
 
+
+
 #### ---------------------------
 #### Step 1 - Restrict to international traded projects ####
 #### ---------------------------
@@ -675,7 +677,7 @@ gdp_2024 <- read_csv(gdp_path, show_col_types = FALSE) %>%
 ```{r}
 
 #### ============================================================ ####
-####  Pipeline for Host vs Proponent WGI scatterplots ####
+####  Pipeline for Implementer vs Proponent WGI scatterplots ####
 #### Outputs for each WGI metric:
 ####   A) Raw volume (no GDP correction)
 ####   B) Standardised by HOST GDP per capita
@@ -797,7 +799,7 @@ build_host_prop_scatter <- function(df, metric_key, metric_label,
   ) +
     geom_point(alpha = alpha) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey55") +
-    scale_colour_manual(values = continent_colors, name = "Host continent") +
+    scale_colour_manual(values = continent_colors, name = "Implementer continent") +
     scale_size_continuous(
       name = size_legend_title,
       labels = scales::label_number(scale_cut = scales::cut_si(""), accuracy = 1),
@@ -806,10 +808,10 @@ build_host_prop_scatter <- function(df, metric_key, metric_label,
     scale_x_continuous(n.breaks = 6) +
     scale_y_continuous(n.breaks = 6) +
     labs(
-      x = paste0("Host: ", metric_label, " (WGI ", metric_key, ")"),
-      y = paste0("Proponent: ", metric_label, " (WGI ", metric_key, ")"),
+      x = paste0("Implementer: ", metric_label, " (WGI ", metric_key, ")"),
+      y = paste0("Purchaser: ", metric_label, " (WGI ", metric_key, ")"),
       title = paste0(title_prefix, " — ", metric_label),
-      subtitle = "Color = host continent; dashed line is y = x"
+      subtitle = "Color = implementer continent; dashed line is y = x"
     ) +
     theme_minimal() +
     theme(
@@ -868,21 +870,21 @@ size_modes <- list(
     size_col_pair = "vol_raw",
     size_col_project = "vol_raw",
     suffix = "rawVolume",
-    legend_pair = "Total credit volume (tonnes)\n(host–proponent pair)",
+    legend_pair = "Total credit volume (tonnes)\n(implementer–purchaser pair)",
     legend_project = "Project credit volume (tonnes)"
   ),
   gdp_pc = list(
     size_col_pair = "vol_per_host_gdp_pc",
     size_col_project = "vol_per_host_gdp_pc",
     suffix = "stdHostGDPpc",
-    legend_pair = "Credit volume / host GDP per capita\n(host–proponent pair)",
+    legend_pair = "Credit volume / host GDP per capita\n(implementer–purchaser pair)",
     legend_project = "Credit volume / host GDP per capita"
   ),
   gdp = list(
     size_col_pair = "vol_per_host_gdp",
     size_col_project = "vol_per_host_gdp",
     suffix = "stdHostGDP",
-    legend_pair = "Credit volume / host GDP (Current US$)\n(host–proponent pair)",
+    legend_pair = "Credit volume / host GDP (Current US$)\n(implementer–purchaser)",
     legend_project = "Credit volume / host GDP (Current US$)"
   )
 )
@@ -944,13 +946,13 @@ for (ds_name in names(datasets)) {
         metric_label = metric_label,
         size_col = mode$size_col_pair,
         size_legend_title = mode$legend_pair,
-        title_prefix = paste0("Host vs proponent governance (pair-aggregated, ", ds_name, ", ", mode$suffix, ")"),
+        title_prefix = paste0("Implementer vs purchaser governance (pair-aggregated, ", ds_name, ", ", mode$suffix, ")"),
         alpha = 0.60,
         size_range = c(1.5, 10)
       )
       
       print(p_pair)
-      save_plot_png(p_pair, paste0("pair_host_vs_proponent_", ds_name, "_", m, "_", mode$suffix, "_hostcolor"))
+      save_plot_png(p_pair, paste0("pair_implementer_vs_pyrchaser_", ds_name, "_", m, "_", mode$suffix, "_hostcolor"))
       
       ## ---- Project plot ----
       p_project <- build_host_prop_scatter(
@@ -959,13 +961,13 @@ for (ds_name in names(datasets)) {
         metric_label = metric_label,
         size_col = mode$size_col_project,
         size_legend_title = mode$legend_project,
-        title_prefix = paste0("Host vs proponent governance (project-level, ", ds_name, ", ", mode$suffix, ")"),
+        title_prefix = paste0("Implementer vs purchaser governance (project-level, ", ds_name, ", ", mode$suffix, ")"),
         alpha = 0.40,
         size_range = c(0.6, 7.5)
       )
       
       print(p_project)
-      save_plot_png(p_project, paste0("project_host_vs_proponent_", ds_name, "_", m, "_", mode$suffix, "_hostcolor"))
+      save_plot_png(p_project, paste0("project_implementer_vs_proponent_", ds_name, "_", m, "_", mode$suffix, "_hostcolor"))
     }
   }
 }
@@ -1026,7 +1028,7 @@ label_countries_facets_host <- make_facet_labels(host_carbon_wgi_long)
 host_govmetrics_logged <- build_faceted_plot(
   df_long = host_carbon_wgi_long,
   label_df = label_countries_facets_host,
-  role_title = "host countries",
+  role_title = "implementer countries",
   continent_col = "host_continent_iso",
   logged = TRUE
 )
@@ -1035,7 +1037,7 @@ host_govmetrics_logged <- build_faceted_plot(
 host_govmetrics_unlogged <- build_faceted_plot(
   df_long = host_carbon_wgi_long,
   label_df = label_countries_facets_host,
-  role_title = "host countries",
+  role_title = "implementer countries",
   continent_col = "host_continent_iso",
   logged = FALSE
 )
@@ -1083,7 +1085,7 @@ label_countries_facets_proponent <- make_facet_labels(proponent_carbon_wgi_long)
 proponent_govmetrics_logged <- build_faceted_plot(
   df_long = proponent_carbon_wgi_long,
   label_df = label_countries_facets_proponent,
-  role_title = "proponent countries",
+  role_title = "purchaser countries",
   continent_col = "proponent_continent_iso",
   logged = TRUE
 )
@@ -1091,7 +1093,7 @@ proponent_govmetrics_logged <- build_faceted_plot(
 proponent_govmetrics_unlogged <- build_faceted_plot(
   df_long = proponent_carbon_wgi_long,
   label_df = label_countries_facets_proponent,
-  role_title = "proponent countries",
+  role_title = "purchaser countries",
   continent_col = "proponent_continent_iso",
   logged = FALSE
 )
@@ -1135,7 +1137,7 @@ host_proponents_rq_logged <- ggplot(
     x = "Total forest-based carbon credit volume (log scale)",
     y = "Regulatory Quality (WGI)",
     title = "Regulatory quality vs forest-based carbon credit volume",
-    subtitle = "Hosts (blue) vs proponents (purple)"
+    subtitle = "Implementer (blue) vs purchaser (purple)"
   ) +
   theme_minimal() +
   theme(legend.position = "right", legend.title = element_text(face = "bold"))
@@ -1145,7 +1147,7 @@ host_proponents_rq_unlogged <- host_proponents_rq_logged +
   scale_x_continuous(labels = label_number(scale_cut = cut_si(""), accuracy = 1)) +
   labs(
     x = "Total forest-based carbon credit volume",
-    subtitle = "Hosts (blue) vs proponents (purple); linear scale"
+    subtitle = "Implementer (blue) vs purchaser (purple); linear scale"
   )
 
 print(host_proponents_rq_logged)
@@ -1155,7 +1157,7 @@ print(host_proponents_rq_unlogged)
 save_plot_png(host_proponents_rq_unlogged, "host_proponents_rq_unlogged")
 
 # --- C2: ALL governance metrics, Host vs Proponent (faceted, no GDP size) ---
-# (This answers your “faceted or single plot comparing hosts and proponents across metrics” request.)
+
 host_all <- host_carbon_wgi_long %>%
   filter(total_credit_volume > 0, !is.na(estimate)) %>%
   mutate(role = "Host") %>%
@@ -1185,7 +1187,7 @@ host_proponents_gov_metrics_all_logged <- ggplot(
     x = "Total forest-based carbon credit volume (log scale)",
     y = "Governance score (WGI)",
     title = "Governance vs forest-based carbon credit volume",
-    subtitle = "Host vs proponent countries; faceted across WGI metrics"
+    subtitle = "Implementer vs proponent countries; faceted across WGI metrics"
   ) +
   theme_minimal() +
   theme(legend.position = "right", legend.title = element_text(face = "bold"))
@@ -1457,7 +1459,7 @@ ggplot(
   labs(
     x = "Total forest-based carbon credit volume (log scale)",
     y = "Governance score (WGI)",
-    title = "Forest-based carbon project volume vs governance, host countries",
+    title = "Forest-based carbon project volume vs governance, implementer countries",
     subtitle = "International projects only; point size = GDP per capita (2024)"
   ) +
   
@@ -1769,7 +1771,7 @@ gov_proponent_plot_faceted_gdp_logged <- ggplot(
   labs(
     x = "Total forest-based carbon credit volume (log scale)",
     y = "Governance score (WGI)",
-    title = "Forest-based carbon project volume vs governance, proponent countries",
+    title = "Forest-based carbon project volume vs governance, purchaser countries",
     subtitle = "International projects only; point size = GDP per capita (2024)"
   ) +
   
@@ -1847,7 +1849,7 @@ gov_proponent_plot_faceted_gdp_linear <- ggplot(
   labs(
     x = "Total forest-based carbon credit volume",
     y = "Governance score (WGI)",
-    title = "Forest-based carbon project volume vs governance, proponent countries",
+    title = "Forest-based carbon project volume vs governance, purchaser countries",
     subtitle = "International projects only; linear x-axis; point size = GDP per capita (2024)"
   ) +
   
@@ -2010,6 +2012,64 @@ rq_overlay_plot_linear <- ggplot(
   )
 
 print(rq_overlay_plot_linear)
+
+
+### Creating faceted plots of logged/unlogged, implementer/purchaser with Governance indicators (correcting for labeling) ####
+
+#### ============================================================
+#### Print governance plots: implementer & purchaser, logged & unlogged
+#### ============================================================
+
+## --- Implementer (host) plots ---
+
+implementer_govmetrics_logged <- build_faceted_plot(
+  df_long      = host_carbon_wgi_long,
+  label_df     = label_countries_facets_host,
+  role_title   = "implementer countries",
+  continent_col = "host_continent_iso",
+  logged       = TRUE
+)
+
+implementer_govmetrics_unlogged <- build_faceted_plot(
+  df_long      = host_carbon_wgi_long,
+  label_df     = label_countries_facets_host,
+  role_title   = "implementer countries",
+  continent_col = "host_continent_iso",
+  logged       = FALSE
+)
+
+print(implementer_govmetrics_logged)
+save_plot_png(implementer_govmetrics_logged, "implementer_govmetrics_logged")
+
+print(implementer_govmetrics_unlogged)
+save_plot_png(implementer_govmetrics_unlogged, "implementer_govmetrics_unlogged")
+
+
+## --- Purchaser (proponent) plots ---
+
+purchaser_govmetrics_logged <- build_faceted_plot(
+  df_long      = proponent_carbon_wgi_long,
+  label_df     = label_countries_facets_proponent,
+  role_title   = "purchaser countries",
+  continent_col = "proponent_continent_iso",
+  logged       = TRUE
+)
+
+purchaser_govmetrics_unlogged <- build_faceted_plot(
+  df_long      = proponent_carbon_wgi_long,
+  label_df     = label_countries_facets_proponent,
+  role_title   = "purchaser countries",
+  continent_col = "proponent_continent_iso",
+  logged       = FALSE
+)
+
+print(purchaser_govmetrics_logged)
+save_plot_png(purchaser_govmetrics_logged, "purchaser_govmetrics_logged")
+
+print(purchaser_govmetrics_unlogged)
+save_plot_png(purchaser_govmetrics_unlogged, "purchaser_govmetrics_unlogged")
+
+
 
 ```
 
